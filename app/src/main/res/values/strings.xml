@@ -2,5 +2,6 @@
     <string name="app_name">云松天气</string>
     <string name="app_version_label">版本 %1$s</string>
     <string name="icon_source_settings_label">天气图标来源 · 桑榆菲碗\niconfont · 阿里巴巴矢量图标库</string>
+    <string name="icon_source_public_about_text">当前为公开源码构建：天气图标使用程序独立绘制的简化图形，不包含原第三方 SVG。\n\n维护者个人构建可选用的原天气图标来自 iconfont（阿里巴巴矢量图标库），作者为桑榆菲碗：\nhttps://www.iconfont.cn/collections/detail?cid=53861\n\n原图标不在公开工程中，也不按项目 GPL 重新授权。公开代码与简化图形按项目许可证提供；其他素材保留其适用声明。</string>
     <string name="icon_source_about_text">天气图标来源：iconfont · 阿里巴巴矢量图标库\n作者：桑榆菲碗\nhttps://www.iconfont.cn/collections/detail?cid=53861\n\n图标版权及使用条件由原作者保留，不因本项目代码采用 GPL-3.0 而重新授权；具体使用范围请以原作者的授权说明为准。</string>
 </resources>

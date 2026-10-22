@@ -121,6 +121,7 @@
                 android:padding="16dp"
                 android:autoLink="web"
                 android:lineSpacingExtra="4dp"
+                android:id="@+id/tvIconSourceDescription"
                 android:text="@string/icon_source_about_text"
                 android:textColor="@color/text_primary"
                 android:textSize="14sp" />

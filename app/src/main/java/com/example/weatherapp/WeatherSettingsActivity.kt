@@ -273,11 +273,16 @@ class WeatherSettingsActivity : AppCompatActivity() {
         }
 
         // —— 关于天气 ——
-        findViewById<View>(R.id.btnIconSource).apply {
+        findViewById<TextView>(R.id.btnIconSource).apply {
             visibility = if (BuildConfig.USER_CONFIGURABLE) View.VISIBLE else View.GONE
+            if (!BuildConfig.HAS_PRIVATE_ICON_ASSETS) text = "图标与许可说明\n公开构建 · 简化绘制图标"
             setOnClickListener {
                 runCatching {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(IconAttribution.COLLECTION_URL)))
+                    if (BuildConfig.HAS_PRIVATE_ICON_ASSETS) {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(IconAttribution.COLLECTION_URL)))
+                    } else {
+                        startActivity(Intent(this@WeatherSettingsActivity,WeatherAboutActivity::class.java))
+                    }
                 }.onFailure {
                     Toast.makeText(this@WeatherSettingsActivity, "未找到可打开来源网页的浏览器", Toast.LENGTH_LONG).show()
                 }

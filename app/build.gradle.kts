@@ -17,6 +17,7 @@ android {
         versionName = "1.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "USER_CONFIGURABLE", "true")
+        buildConfigField("boolean", "HAS_PRIVATE_ICON_ASSETS", (privateIconAssetsDir != null).toString())
         listOf("WEATHER_GATEWAY_BASE_URL", "CAIYUN_EMBEDDED_TOKEN", "LEGACY_QWEATHER_HOST",
             "LEGACY_QWEATHER_KID", "LEGACY_QWEATHER_SUB", "LEGACY_QWEATHER_PRIVATE_KEY_PEM").forEach {
             buildConfigField("String", it, "\"\"")

@@ -31,5 +31,9 @@ class WeatherAboutActivity : AppCompatActivity() {
         }
         findViewById<View>(R.id.btnWeatherAboutBack).setOnClickListener { finish() }
         findViewById<TextView>(R.id.tvWeatherAboutVersion).text = getString(R.string.app_version_label, BuildConfig.VERSION_NAME)
+        findViewById<TextView>(R.id.tvIconSourceDescription).setText(
+            if (BuildConfig.HAS_PRIVATE_ICON_ASSETS) R.string.icon_source_about_text
+            else R.string.icon_source_public_about_text
+        )
     }
 }
