@@ -87,7 +87,7 @@
                 android:background="@drawable/settings_card_bg"
                 android:lineSpacingExtra="3dp"
                 android:padding="16dp"
-                android:text="云松天气 · 自填接口版\n按你填写的数据服务查看天气：点地址管理城市，点卡片查看详情，横向拖动图表比较逐小时变化。无需登录其他天气 App 的账号。"
+                android:text="云松天气\n按你填写的数据服务查看天气：点地址管理城市，点卡片查看详情，横向拖动图表比较逐小时变化。无需登录其他天气 App 的账号。"
                 android:textColor="@color/text_secondary"
                 android:textSize="14sp" />
 

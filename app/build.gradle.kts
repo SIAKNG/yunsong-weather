@@ -28,6 +28,7 @@ android {
         create("userApi") {
             dimension = "credentials"
             applicationIdSuffix = ".userapi"
+            versionNameSuffix = "-userapi"
         }
     }
     buildFeatures { buildConfig = true }
