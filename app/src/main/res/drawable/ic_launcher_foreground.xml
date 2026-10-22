@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 新图本身已包含足够的蓝色安全留白，按原图比例显示。 -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:inset="0dp">
+    <bitmap
+        android:src="@drawable/apptubiao"
+        android:gravity="fill" />
+</inset>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色主题 -->
+    <color name="page_bg">#0E1726</color>
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#B3FFFFFF</color>
+    <color name="text_tertiary">#66FFFFFF</color>
+    <color name="divider">#33FFFFFF</color>
+    <color name="accent">#8AB4FF</color>
+    <color name="input_bg">#33FFFFFF</color>
+    <color name="btn_overlay">#3DFFFFFF</color>
+    <color name="search_grad_start">#16263D</color>
+    <color name="search_grad_end">#233650</color>
+    <color name="card_bg_start">#2A3550</color>
+    <color name="card_bg_end">#1A1A3A</color>
+    <color name="tag_bg">#2EFFFFFF</color>
+    <color name="delete_bar_bg">#CC1A1A3A</color>
+    <color name="danger">#FF7B7B</color>
+    <color name="check_stroke">#A0FFFFFF</color>
+    <color name="check_fill">#8AB4FF</color>
+    <color name="metric_detail_panel">#2EFFFFFF</color>
+</resources>

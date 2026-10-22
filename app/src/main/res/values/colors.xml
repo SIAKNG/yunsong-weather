@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- 深浅色主题（默认=浅色；values-night 覆盖为深色） -->
+    <color name="light_page_surface">#E5E8EC</color>
+    <color name="light_card_surface">#F8FAFC</color>
+    <color name="detail_glass_tint_top">#B1FFFFFF</color>
+    <color name="detail_glass_tint_bottom">#C7F4F7FA</color>
+    <color name="page_bg">@color/light_page_surface</color>
+    <color name="text_primary">#1A2433</color>
+    <color name="text_secondary">#4A5568</color>
+    <color name="text_tertiary">#6B7686</color>
+    <color name="divider">#1F000000</color>
+    <color name="accent">#3D6FB4</color>
+    <color name="input_bg">@color/light_card_surface</color>
+    <color name="btn_overlay">@color/light_card_surface</color>
+    <color name="search_grad_start">@color/light_page_surface</color>
+    <color name="search_grad_end">@color/light_page_surface</color>
+    <color name="card_bg_start">@color/light_card_surface</color>
+    <color name="card_bg_end">@color/light_card_surface</color>
+    <color name="tag_bg">@color/light_card_surface</color>
+    <color name="delete_bar_bg">#F0FFFFFF</color>
+    <color name="danger">#C53030</color>
+    <color name="check_stroke">#66000000</color>
+    <color name="check_fill">#3D6FB4</color>
+    <color name="metric_detail_panel">@color/light_card_surface</color>
+</resources>

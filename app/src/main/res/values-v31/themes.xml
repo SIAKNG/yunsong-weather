@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ 的系统启动屏不可完全移除；使用透明图标并让它与页面底色衔接，避免显示居中的 App Logo 动画。 -->
+    <style name="Theme.WeatherApp" parent="Base.Theme.WeatherApp">
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_transparent</item>
+        <item name="android:windowSplashScreenBackground">@color/page_bg</item>
+        <item name="android:windowSplashScreenAnimationDuration">0</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+    </style>
+</resources>

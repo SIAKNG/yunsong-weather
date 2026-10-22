@@ -1,0 +1,36 @@
+# Generated output and machine-specific state
+.gradle/
+.kotlin/
+.idea/
+**/build/
+*.iml
+local.properties
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Credentials, local evidence, signing keys and binaries
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.pem
+*.p12
+*.pfx
+*.key
+*.apk
+*.aab
+*.apks
+*.log
+*.db
+*.sqlite*
+*.hprof
+validation*/
+private/
+private-assets/
+.private-assets/
+
+# This public project must never acquire the personal built-in variant.
+app/src/full/

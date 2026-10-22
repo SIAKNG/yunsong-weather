@@ -1,0 +1,11 @@
+<resources>
+    <item name="guideRoot" type="id" />
+    <item name="guideProgress" type="id" />
+    <item name="guideScene" type="id" />
+    <item name="guideHint" type="id" />
+    <item name="guideAction" type="id" />
+    <item name="guideNext" type="id" />
+    <item name="guidePrevious" type="id" />
+    <item name="apiSetupNotice" type="id" />
+    <item name="btnSetupApi" type="id" />
+</resources>

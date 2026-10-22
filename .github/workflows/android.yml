@@ -1,0 +1,25 @@
+name: Android checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check public source boundary
+        run: python3 tools/check_public_tree.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: android-actions/setup-android@v3
+      - name: Install SDK
+        run: sdkmanager 'platforms;android-37' 'build-tools;36.0.0'
+      - name: Build and test user-configured edition
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:testUserApiDebugUnitTest :app:assembleUserApiRelease --max-workers=2 --console=plain

@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <application
+        android:name=".WeatherApp"
+        android:allowBackup="true"
+        android:usesCleartextTraffic="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@drawable/yunsong_weather_icon"
+        android:label="@string/app_name"
+        android:roundIcon="@drawable/yunsong_weather_icon"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.WeatherApp">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".SearchActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".CityManageActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".WeatherSettingsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".ApiConfigurationActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".ApiTutorialActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".WeatherAboutActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".AlertActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".LifeAdviceActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <activity android:name=".ForecastDetailActivity"
+            android:exported="false" android:screenOrientation="portrait" />
+        <activity
+            android:name=".HourlyForecastDetailActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".MetricDetailActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.WeatherApp.DetailTransition" />
+        <activity
+            android:name=".AirQualityDetailActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.WeatherApp.DetailTransition" />
+        <activity
+            android:name=".SunDetailActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.WeatherApp.DetailTransition" />
+        <!-- 首页卡片进入详情时必须实际启动不透明 Activity，ColorOS 才会执行 View Seamless。
+             页面类不改写逻辑；页内横滑后仍回到上方的透明详情 Activity。 -->
+        <activity
+            android:name=".MetricDetailCardEntryActivity"
+            android:exported="false"
+            android:theme="@style/Theme.WeatherApp" />
+        <activity
+            android:name=".AirQualityDetailCardEntryActivity"
+            android:exported="false"
+            android:theme="@style/Theme.WeatherApp" />
+        <activity
+            android:name=".SunDetailCardEntryActivity"
+            android:exported="false"
+            android:theme="@style/Theme.WeatherApp" />
+        <activity
+            android:name=".CityPreviewActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <receiver
+            android:name=".WeatherRecoveryReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".WeatherRiskRecoveryReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".TemperatureChangeReminderReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".MorningWeatherReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".WeatherBootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

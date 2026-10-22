@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <!-- 最大圆角（胶囊） -->
+    <corners android:radius="999dp" />
+    <!-- 固定半透明白，深浅色模式下保持一致 -->
+    <solid android:color="#33FFFFFF" />
+</shape>

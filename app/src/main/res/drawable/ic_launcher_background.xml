@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 与 apptubiao 原图边缘接近的蓝色背景，配合前景内缩后扩大周围留白。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#368BEA" />
+</shape>

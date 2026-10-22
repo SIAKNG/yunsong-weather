@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- 全局共享的天气背景：所有城市页共用一份，天气相同则不切换，天气不同才整体淡入淡出 -->
+    <com.example.weatherapp.WeatherBackgroundView
+        android:id="@+id/bgCurrent"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <com.example.weatherapp.WeatherBackgroundView
+        android:id="@+id/bgNext"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:alpha="0" />
+
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/main"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/transparent" />
+</FrameLayout>

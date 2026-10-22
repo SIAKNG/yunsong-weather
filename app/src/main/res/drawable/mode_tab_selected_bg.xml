@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <!-- 内外都做成半圆端：外高 29dp→14.5，内高 21dp→10.5 -->
+    <corners android:radius="10.5dp" />
+    <!-- 与“查看更多”胶囊使用完全一致的白色浓度。 -->
+    <solid android:color="#33FFFFFF" />
+</shape>

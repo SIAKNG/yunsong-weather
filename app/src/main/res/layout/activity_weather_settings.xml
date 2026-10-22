@@ -1,0 +1,300 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/settingsRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/page_bg"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="8dp">
+
+        <ImageView
+            android:id="@+id/btnBack"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="返回"
+            android:padding="8dp"
+            android:src="@drawable/ic_back_arrow"
+            android:tint="@color/text_primary" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="天气设置"
+            android:textColor="@color/text_primary"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <View
+            android:layout_width="40dp"
+            android:layout_height="1dp" />
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="32dp">
+
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" style="@style/SettingsSectionTitle" android:text="显示与数据" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/settings_card_bg"
+                android:orientation="vertical">
+                <LinearLayout
+                    android:id="@+id/rowSource"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    style="@style/SettingsChoiceRow">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceTitle" android:text="天气数据" />
+                    <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+                    <TextView android:id="@+id/tvSourceValue" android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceValue" android:text="彩云主源 · 和风补充" />
+                    <ImageView android:id="@+id/ivSourceArrow" android:layout_width="20dp" android:layout_height="20dp" android:visibility="gone" style="@style/SettingsChoiceArrow" />
+                </LinearLayout>
+                <!-- 固定数据说明与深浅色模式之间保留和其它设置项一致的分割线。 -->
+                <com.example.weatherapp.DashedDividerView android:layout_width="match_parent" android:layout_height="1dp" style="@style/SettingsDivider" />
+                <LinearLayout
+                    android:id="@+id/rowCaiyunAccess"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone"
+                    style="@style/SettingsChoiceRow">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceTitle" android:text="彩云接口模式" />
+                    <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+                    <TextView android:id="@+id/tvCaiyunAccessValue" android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceValue" android:text="官方共享接口" />
+                    <ImageView android:id="@+id/ivCaiyunAccessArrow" android:layout_width="20dp" android:layout_height="20dp" style="@style/SettingsChoiceArrow" />
+                </LinearLayout>
+                <com.example.weatherapp.DashedDividerView
+                    android:id="@+id/dividerCaiyunAccess"
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:visibility="gone"
+                    style="@style/SettingsDivider" />
+                <LinearLayout
+                    android:id="@+id/rowCaiyunToken"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone"
+                    style="@style/SettingsChoiceRow">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceTitle" android:text="我的彩云 Token" />
+                    <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+                    <TextView android:id="@+id/tvCaiyunTokenValue" android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceValue" android:text="点击设置或更换" />
+                    <ImageView android:id="@+id/ivCaiyunTokenArrow" android:layout_width="20dp" android:layout_height="20dp" style="@style/SettingsChoiceArrow" />
+                </LinearLayout>
+                <com.example.weatherapp.DashedDividerView
+                    android:id="@+id/dividerCaiyunToken"
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:visibility="gone"
+                    style="@style/SettingsDivider" />
+                <LinearLayout
+                    android:id="@+id/rowTheme"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    style="@style/SettingsChoiceRow">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceTitle" android:text="深浅色模式" />
+                    <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+                    <TextView android:id="@+id/tvThemeValue" android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceValue" android:text="跟随系统" />
+                    <ImageView android:id="@+id/ivThemeArrow" android:layout_width="20dp" android:layout_height="20dp" style="@style/SettingsChoiceArrow" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" style="@style/SettingsSectionTitle" android:layout_marginTop="18dp" android:text="单位" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/settings_card_bg"
+                android:orientation="vertical">
+                <LinearLayout android:id="@+id/rowTemp" android:layout_width="match_parent" android:layout_height="wrap_content" style="@style/SettingsChoiceRow">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceTitle" android:text="温度单位" />
+                    <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+                    <TextView android:id="@+id/tvTempValue" android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceValue" android:text="摄氏度 (°C)" />
+                    <ImageView android:id="@+id/ivTempArrow" android:layout_width="20dp" android:layout_height="20dp" style="@style/SettingsChoiceArrow" />
+                </LinearLayout>
+                <com.example.weatherapp.DashedDividerView android:layout_width="match_parent" android:layout_height="1dp" style="@style/SettingsDivider" />
+                <LinearLayout android:id="@+id/rowWind" android:layout_width="match_parent" android:layout_height="wrap_content" style="@style/SettingsChoiceRow">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceTitle" android:text="风力单位" />
+                    <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+                    <TextView android:id="@+id/tvWindValue" android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceValue" android:text="公里/小时" />
+                    <ImageView android:id="@+id/ivWindArrow" android:layout_width="20dp" android:layout_height="20dp" style="@style/SettingsChoiceArrow" />
+                </LinearLayout>
+                <com.example.weatherapp.DashedDividerView android:layout_width="match_parent" android:layout_height="1dp" style="@style/SettingsDivider" />
+                <LinearLayout android:id="@+id/rowPressure" android:layout_width="match_parent" android:layout_height="wrap_content" style="@style/SettingsChoiceRow">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceTitle" android:text="气压单位" />
+                    <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+                    <TextView android:id="@+id/tvPressureValue" android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceValue" android:text="百帕 (hPa)" />
+                    <ImageView android:id="@+id/ivPressureArrow" android:layout_width="20dp" android:layout_height="20dp" style="@style/SettingsChoiceArrow" />
+                </LinearLayout>
+                <com.example.weatherapp.DashedDividerView android:layout_width="match_parent" android:layout_height="1dp" style="@style/SettingsDivider" />
+                <LinearLayout android:id="@+id/rowVis" android:layout_width="match_parent" android:layout_height="wrap_content" style="@style/SettingsChoiceRow">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceTitle" android:text="能见度单位" />
+                    <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+                    <TextView android:id="@+id/tvVisValue" android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceValue" android:text="公里 (km)" />
+                    <ImageView android:id="@+id/ivVisArrow" android:layout_width="20dp" android:layout_height="20dp" style="@style/SettingsChoiceArrow" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" style="@style/SettingsSectionTitle" android:layout_marginTop="18dp" android:text="天气提醒" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/settings_card_bg"
+                android:orientation="vertical">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" style="@style/SettingsSwitchRow">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceTitle" android:text="极端天气提醒" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsSwitchHint" android:text="天气可能带来风险时，及时提醒你做好防护" />
+                    </LinearLayout>
+                    <android.widget.Switch style="@style/WeatherSystemSwitch"
+                        android:id="@+id/switchDisasterReminder"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+                </LinearLayout>
+                <com.example.weatherapp.DashedDividerView android:layout_width="match_parent" android:layout_height="1dp" style="@style/SettingsDivider" />
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" style="@style/SettingsSwitchRow">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceTitle" android:text="变温提醒" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsSwitchHint" android:text="气温明显升降时，提前提醒你添减衣物" />
+                    </LinearLayout>
+                    <android.widget.Switch style="@style/WeatherSystemSwitch" android:id="@+id/switchTemperatureReminder" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                </LinearLayout>
+                <com.example.weatherapp.DashedDividerView android:layout_width="match_parent" android:layout_height="1dp" style="@style/SettingsDivider" />
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" style="@style/SettingsSwitchRow">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceTitle" android:text="大风提醒" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsSwitchHint" android:text="风势增强时，提醒你留意出行与户外安全" />
+                    </LinearLayout>
+                    <android.widget.Switch style="@style/WeatherSystemSwitch" android:id="@+id/switchWindReminder" android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                </LinearLayout>
+                <com.example.weatherapp.DashedDividerView android:layout_width="match_parent" android:layout_height="1dp" style="@style/SettingsDivider" />
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" style="@style/SettingsSwitchRow">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceTitle" android:text="降雨提醒" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsSwitchHint" android:text="降雨临近或雨势变化时，提醒你带好雨具" />
+                    </LinearLayout>
+                    <android.widget.Switch style="@style/WeatherSystemSwitch"
+                        android:id="@+id/switchRainReminder"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+                </LinearLayout>
+                <com.example.weatherapp.DashedDividerView android:layout_width="match_parent" android:layout_height="1dp" style="@style/SettingsDivider" />
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" style="@style/SettingsSwitchRow">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceTitle" android:text="每日天气预报" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsSwitchHint" android:text="贴心了解日常天气，提前安排穿衣与出行" />
+                    </LinearLayout>
+                    <android.widget.Switch style="@style/WeatherSystemSwitch"
+                        android:id="@+id/switchDailyReminder"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" style="@style/SettingsSectionTitle" android:layout_marginTop="18dp" android:text="通知诊断与测试" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/settings_card_bg"
+                android:orientation="vertical"
+                android:padding="16dp">
+                <TextView
+                    android:id="@+id/tvNotificationDiagnostics"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:lineSpacingExtra="3dp"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
+                <TextView
+                    android:id="@+id/btnSendNotificationTest"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:layout_marginTop="14dp"
+                    android:background="@drawable/btn_see_more"
+                    android:gravity="center"
+                    android:text="发送三类测试通知"
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/btnOpenNotificationSystemSettings"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/btn_see_more"
+                    android:gravity="center"
+                    android:text="打开系统通知与后台设置"
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="本机提醒会受 OPPO/一加省电策略影响，不能保证分钟级及时；请在系统页检查通知、后台运行、自启动及精确闹钟。"
+                    android:textColor="@color/text_tertiary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/btnUsageGuide"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/btn_see_more"
+                android:gravity="center"
+                android:text="使用帮助"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+            <TextView
+                android:id="@+id/btnIconSource"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="64dp"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/btn_see_more"
+                android:gravity="center"
+                android:padding="12dp"
+                android:lineSpacingExtra="3dp"
+                android:text="@string/icon_source_settings_label"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp"
+                android:visibility="gone" />
+            <TextView
+                android:id="@+id/btnAbout"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="24dp"
+                android:background="@drawable/btn_see_more"
+                android:gravity="center"
+                android:text="关于云松天气"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

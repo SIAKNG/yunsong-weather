@@ -1,0 +1,16 @@
+<resources>
+    <item name="apiTutorialRoot" type="id" />
+    <item name="apiTutorialCaiyun" type="id" />
+    <item name="apiTutorialQweather" type="id" />
+    <item name="apiTutorialScroll" type="id" />
+    <item name="btnApiTutorial" type="id" />
+    <item name="apiConfigRoot" type="id" />
+    <item name="apiQweatherHost" type="id" />
+    <item name="apiQweatherKey" type="id" />
+    <item name="apiSave" type="id" />
+    <item name="apiCheck" type="id" />
+    <item name="apiConfigScroll" type="id" />
+    <item name="apiCaiyunToken" type="id" />
+    <item name="apiAmapKey" type="id" />
+    <item name="apiCapabilityTable" type="id" />
+</resources>

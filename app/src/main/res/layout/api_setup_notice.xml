@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@id/apiSetupNotice"
+    android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:orientation="vertical" android:padding="20dp" android:layout_marginBottom="16dp"
+    android:background="@drawable/settings_card_bg" android:visibility="gone">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="尚未配置天气 API" android:textColor="@color/text_primary"
+        android:textSize="19sp" android:textStyle="bold" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="10dp" android:text="本版本需要填写个人天气接口才能加载数据。这不是网络故障，请先完成配置，再返回首页刷新。"
+        android:textColor="@color/text_secondary" android:textSize="15sp" android:lineSpacingExtra="4dp" />
+    <com.google.android.material.button.MaterialButton android:id="@id/btnSetupApi"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="12dp" android:text="去填写 API" />
+</LinearLayout>

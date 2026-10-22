@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/weatherAboutRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/page_bg"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="8dp">
+
+        <ImageView
+            android:id="@+id/btnWeatherAboutBack"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="返回"
+            android:padding="8dp"
+            android:src="@drawable/ic_back_arrow"
+            android:tint="@color/text_primary" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="关于云松天气"
+            android:textColor="@color/text_primary"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <View android:layout_width="40dp" android:layout_height="1dp" />
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="28dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/settings_card_bg"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="16dp">
+
+                <ImageView
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:contentDescription="云松天气图标"
+                    android:src="@drawable/yunsong_weather_icon" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="14dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="云松天气" android:textColor="@color/text_primary" android:textSize="20sp" android:textStyle="bold" />
+                    <TextView android:id="@+id/tvWeatherAboutVersion" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:textColor="@color/text_secondary" android:textSize="13sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="应用介绍" style="@style/SettingsSectionTitle" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/settings_card_bg"
+                android:lineSpacingExtra="3dp"
+                android:padding="16dp"
+                android:text="云松天气 · 自填接口版\n按你填写的数据服务查看天气：点地址管理城市，点卡片查看详情，横向拖动图表比较逐小时变化。无需登录其他天气 App 的账号。"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
+
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="支持功能" style="@style/SettingsSectionTitle" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/settings_card_bg"
+                android:lineSpacingExtra="3dp"
+                android:padding="16dp"
+                android:text="实况与 48 小时图表、多日天气、短时降雨、空气质量、日出日落及生活建议；支持多城市、单位切换和本机提醒。实际覆盖时长与字段取决于你所填写接口的返回，可在天气源配置页单独检测。"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
+
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="个人信息收集清单" style="@style/SettingsSectionTitle" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/settings_card_bg"
+                android:lineSpacingExtra="4dp"
+                android:padding="16dp"
+                android:text="• 接口凭证：由你填写，使用 Android Keystore 与 AES-GCM 加密保存；不随安装包分发，关闭应用备份和设备迁移。\n• 定位与城市：查询天气时，城市坐标会发送给相应天气服务。启用补充数据时也会查询补充服务；城市搜索使用已配置的高德或系统地理编码。\n• 本地内容：保存城市、单位、天气缓存及通知记录留在本机。后台定位仅用于已开启的本机天气提醒。\n• 权限：不读取通讯录、短信、通话记录或相册；通知仅用于你启用的天气提醒。"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
+
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="图标来源与使用说明" style="@style/SettingsSectionTitle" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/settings_card_bg"
+                android:padding="16dp"
+                android:autoLink="web"
+                android:lineSpacingExtra="4dp"
+                android:text="@string/icon_source_about_text"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="18dp" android:text="数据与使用帮助" style="@style/SettingsSectionTitle" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/settings_card_bg"
+                android:padding="16dp"
+                android:autoLink="web"
+                android:lineSpacingExtra="4dp"
+                android:text="天气服务：彩云天气 https://caiyunapp.com/\n和风天气 QWeather https://www.qweather.com/\n缺失字段补充：Open-Meteo https://open-meteo.com/\n全国空气排名：生态环境部 https://www.mee.gov.cn/\n\n数据服务标识不代表联合开发或会员互通。本版本不包含作者私人联系方式。使用帮助可在设置中重新打开。"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp" />
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>
