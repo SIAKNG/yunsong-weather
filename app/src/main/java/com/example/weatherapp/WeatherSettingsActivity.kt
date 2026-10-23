@@ -30,6 +30,7 @@ import com.google.android.material.color.DynamicColors
 import com.google.android.material.color.MaterialColors
 import android.widget.CompoundButton
 import kotlinx.coroutines.runBlocking
+import java.util.concurrent.Executors
 
 // 天气设置页：数据源、深浅色模式、温度/风力/气压/能见度单位、关于天气。
 // 每个分区是一行“标题 + 当前值 + 箭头”，点击后弹出悬浮小面板进行选择（参考 shezhi 效果）；
@@ -56,6 +57,7 @@ class WeatherSettingsActivity : AppCompatActivity() {
     private lateinit var tvCaiyunAccess: TextView
     private lateinit var tvCaiyunToken: TextView
     private lateinit var tvNotificationDiagnostics: TextView
+    private val updateExecutor = Executors.newSingleThreadExecutor()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -291,6 +293,13 @@ class WeatherSettingsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnAbout).setOnClickListener {
             startActivity(Intent(this, WeatherAboutActivity::class.java))
         }
+        findViewById<View>(R.id.btnCheckUpdate).setOnClickListener {
+            runCatching {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(AppUpdatePolicy.DOWNLOAD_PAGE)))
+            }.onFailure {
+                Toast.makeText(this, "未找到浏览器，请在 GitHub 查看 SIAKNG/yunsong-weather 的 Releases", Toast.LENGTH_LONG).show()
+            }
+        }
         SettingsGlassStyle.applyTree(findViewById(R.id.settingsRoot))
     }
 
@@ -457,6 +466,10 @@ class WeatherSettingsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (!updateExecutor.isShutdown) updateExecutor.execute {
+            val result = AppUpdateChecker(applicationContext).check()
+            runOnUiThread { if (!isFinishing && !isDestroyed) renderUpdateStatus(result) }
+        }
         if (BuildConfig.USER_CONFIGURABLE) {
             val config = UserApiConfiguration.read(this)
             findViewById<TextView>(R.id.tvSourceValue).text = when {
@@ -472,6 +485,21 @@ class WeatherSettingsActivity : AppCompatActivity() {
             WeatherBackgroundScheduler.schedule(this)
             refreshNotificationDiagnostics()
         }
+    }
+
+    internal fun renderUpdateStatus(result: AppUpdatePolicy.Result) {
+        findViewById<TextView>(R.id.tvUpdateStatus).apply {
+            text = result.label
+            setTextColor(ContextCompat.getColor(this@WeatherSettingsActivity,
+                if (result.status == AppUpdatePolicy.Status.NEW_VERSION) R.color.accent else R.color.text_secondary))
+            setTypeface(null, if (result.status == AppUpdatePolicy.Status.NEW_VERSION) Typeface.BOLD else Typeface.NORMAL)
+        }
+        findViewById<View>(R.id.btnCheckUpdate).contentDescription = "检查更新，${result.label}，打开 GitHub 安装包下载页"
+    }
+
+    override fun onDestroy() {
+        updateExecutor.shutdownNow()
+        super.onDestroy()
     }
 
     private fun refreshNotificationDiagnostics() {
