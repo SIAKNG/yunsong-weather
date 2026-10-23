@@ -73,6 +73,7 @@
 
 建议使用支持此工程的 Android Studio，安装 Android SDK 37、JDK 25，使用随项目提供的 Gradle Wrapper 9.5.0。
 工程使用 Android Gradle Plugin 9.3.1，其内置 Kotlin 支持无需额外声明 Kotlin 插件。
+命令行安装 SDK 时，Google 软件包名称是 `platforms;android-37.0`，不是 `platforms;android-37`。
 
 1. 克隆仓库并在 Android Studio 打开。
 2. 让 Android Studio 自动生成本机 `local.properties` 和 SDK 路径；该文件不可提交。
