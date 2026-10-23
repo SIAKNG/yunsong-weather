@@ -10,6 +10,10 @@ class AppUpdatePolicyTest {
     @Test fun newerSemanticVersion() { assertEquals(AppUpdatePolicy.Status.NEW_VERSION,status(release("v1.2",1))) }
     @Test fun sameVersionHigherBuild() { assertEquals(AppUpdatePolicy.Status.NEW_VERSION,status(release(),3)) }
     @Test fun sameBuildIsCurrent() { assertEquals(AppUpdatePolicy.Status.CURRENT,status(release())) }
+    @Test fun versionedApkNameRemainsCompatible() {
+        assertEquals(AppUpdatePolicy.Status.CURRENT,status(release(code=5,asset="yunsong-weather-1.1.apk"),5))
+        assertEquals(AppUpdatePolicy.Status.NEW_VERSION,status(release("v1.2",6,asset="yunsong-weather-1.2.apk"),5))
+    }
     @Test fun olderBuildIsCurrent() { assertEquals(AppUpdatePolicy.Status.CURRENT,status(release(code=3))) }
     @Test fun olderVersionCannotUpgradeEvenWithHigherCode() { assertEquals(AppUpdatePolicy.Status.CURRENT,status(release("v1.0",999))) }
     @Test fun userApiSuffixAndPatchSupported() { assertEquals(AppUpdatePolicy.Status.NEW_VERSION,status(release("v1.1.1-userapi"))) }

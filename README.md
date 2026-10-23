@@ -4,7 +4,8 @@
 <p align="center">
   <a href="https://github.com/SIAKNG/yunsong-weather/releases/latest">下载安装包</a> ·
   <a href="#界面预览">界面预览</a> · <a href="#天气源与数据边界">天气源</a> ·
-  <a href="#第一次使用">使用方法</a> · <a href="#项目组成与实现">工程组成</a>
+  <a href="#第一次使用">使用方法</a> · <a href="#项目组成与实现">工程组成</a> ·
+  <a href="CHANGELOG.md">版本更新</a>
 </p>
 
 云松天气是一款使用 **Kotlin、XML 与自定义 View / Canvas** 构建的 Android 天气应用。
@@ -14,10 +15,21 @@
 本仓库仅提供**用户自行配置天气 API 的版本**，不包含维护者的天气密钥、个人服务账户或签名私钥。
 应用名为“云松天气”，版本标识 `1.1-userapi`，当前维护构建号 `5`。维护者：SIAKNG。
 
-> **当前为私有审阅阶段，尚未公开发布。** 源码及安装包只供有权限的账号检查，未经确认不会改为公开。
->
 > 截图采用北京、上海等示例城市；**气象数值、预报、建议和预警均为模拟数据**，不是实时天气或真实预警。
 > 它们用于展示界面，并不代表任意 API 都具有图片中的全部权限。
+
+## 版本更新
+
+**当前版本：1.1 · 2026-10-23**
+
+本次发布包括动态天气与毛玻璃卡片、分钟降雨、48 小时/多日交互图表、空气质量与六项气象详情、
+日出日落、生活建议、多城市、天气预警和本机提醒；支持自填彩云/和风 API、首次引导、接口检测及检查更新。
+
+[下载 1.1 安装包](https://github.com/SIAKNG/yunsong-weather/releases/download/v1.1/yunsong-weather-1.1.apk) ·
+[查看 1.1 发布说明](https://github.com/SIAKNG/yunsong-weather/releases/tag/v1.1) ·
+[完整更新记录](CHANGELOG.md)
+
+后续每次发布将在更新记录和对应 Releases 页面列出新增功能、优化、修复与安装注意事项。
 
 ## 功能一览
 
@@ -145,7 +157,7 @@ API 填写页保留防截图保护，文档不展示真实 Token、API Key 或�
 
 ## 第一次使用
 
-1. 在 [Releases](https://github.com/SIAKNG/yunsong-weather/releases/latest) 下载 `yunsong-weather.apk` 并安装。
+1. 在 [Releases](https://github.com/SIAKNG/yunsong-weather/releases/latest) 下载 `yunsong-weather-1.1.apk` 并安装；后续安装包也在文件名中标明版本号。
 2. 完成交互引导，认识地址、城市切换、卡片详情和刷新。
 3. 在“天气设置 → 天气源/API 配置”按教程申请、填写自己的接口信息。
 4. 彩云填 v2 Token；和风填 API Host 和 API Key，不要使用他人的密钥。
@@ -162,16 +174,15 @@ API 填写页保留防截图保护，文档不展示真实 Token、API Key 或�
 发现带 APK 的较新正式版本时，行尾会提示新版本；点击打开 GitHub 下载页，不自动后台安装。
 成功检查缓存六小时，失败后十分钟再试；错误或限流不会误报“已是最新版本”。
 
-私有审阅阶段 App 无法匿名读取私有 Release，会显示“暂无法检查”；网页需有权限账号登录。
-未来经确认公开后，同一入口即可读取公开版本；不会把 GitHub Token 塞进 App 绕过限制。
+更新信息通过 GitHub 公开 Release 获取，无需登录 GitHub，也不需要填写 GitHub Token。
+网络受限或触发限流时可能暂时无法检查，可直接打开下载页查看最新版本。
 
 正式包使用专用发布证书，**不能直接覆盖旧调试签名版**。请勿贸然卸载，以免丢失城市和 API 配置。
 更多规则见 [更新说明](docs/UPDATES.md)。
 
 ## 项目组成与实现
 
-本项目是以 **`:app` 为主体的单模块 Android 工程**。下表为文件职责划分，不代表独立 Gradle 模块；
-排版参考仓库不列作本工程的模块或依赖。
+本项目是以 **`:app` 为主体的单模块 Android 工程**。下表按实际文件职责说明各部分组成。
 
 | 逻辑组成 | 主要实现 | 职责 |
 | --- | --- | --- |
@@ -214,7 +225,6 @@ tools/               源码上传边界检查
 | 构建 | JDK 25、Gradle 9.5.0、AGP 9.3.1（内置 Kotlin 支持）、SDK 37 |
 
 依赖版本以 [版本目录](gradle/libs.versions.toml) 和 [构建文件](app/build.gradle.kts) 为准。
-本项目不是 Compose / Hilt 多模块 Clean Architecture 工程，不把参考仓库的技术栈写成本项目事实。
 
 ## 构建与验证
 
@@ -252,8 +262,8 @@ Release 默认**未签名**，开发者须自行保管发布证书；仓库没�
 第三方依赖、图标和商标保留原作者权利及许可，不因代码开源自动重新授权为 GPL。
 
 原天气图标来自 iconfont 用户“桑榆菲碗”的[天气图标集](https://www.iconfont.cn/collections/detail?cid=53861)。
-按维护者提供的信息，其限免费非商用使用；原 SVG 公开再分发权限仍待明确，因此源码不包含这批原 SVG，
-也不通过 Git 历史、Base64 或加密包暗藏。源码默认使用独立绘制的简化图形。
+按维护者提供的许可信息，该图标限免费非商用使用；原 SVG 的源码再分发权限尚未明确，
+因此本仓库不包含原 SVG，源码默认使用独立绘制的简化图形。
 
 维护者本机构建可从仓库外加载有相应许可的素材：
 
@@ -263,14 +273,4 @@ Release 默认**未签名**，开发者须自行保管发布证书；仓库没�
 
 展示截图和维护者安装包可能采用独立许可素材，默认源码构建的图标细节可能不同。
 APK 素材仍可被提取或截图，不保证不可逆向，也不扩大素材使用/分发许可。
-详见 [私有素材边界](docs/PRIVATE_ARTWORK.md)、[图标来源](docs/ICON_SOURCES.md)、[第三方声明](THIRD_PARTY_NOTICES.md)。
-
-## 反馈与文档参考
-
-反馈请说明版本、系统、天气源、复现步骤、预期和实际表现，并删除地址、坐标、凭据和私人通知记录。
-安全问题请先查看 [SECURITY.md](SECURITY.md)，不要提交未经检查的完整日志。
-
-本文的“功能—截图—工程—构建—数据与许可”组织方式参考了
-[MinimalistWeather](https://github.com/ByronNote/MinimalistWeather) 与
-[weather-none](https://github.com/qnmlgbd250/weather-none) 的介绍形式。
-这是排版参考，不表示采用其架构、全部功能或代码；功能和组成说明以本仓库实际实现为依据。
+详见 [素材构建说明](docs/PRIVATE_ARTWORK.md)、[图标来源](docs/ICON_SOURCES.md)、[第三方声明](THIRD_PARTY_NOTICES.md)。
