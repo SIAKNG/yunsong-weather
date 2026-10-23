@@ -44,6 +44,7 @@ class UpdateSettingsDeviceTest {
                     ins.waitForIdleSync()
                     scenario.onActivity { activity ->
                         assertEquals(dark,WeatherSettings.isDarkTheme(activity))
+                        assertEquals(0,activity.resources.getIdentifier("btnIconSource","id",activity.packageName))
                         val panel = activity.findViewById<View>(R.id.appInformationPanel)
                         val check = activity.findViewById<View>(R.id.btnCheckUpdate)
                         assertSame(panel,check.parent)
@@ -122,5 +123,27 @@ class UpdateSettingsDeviceTest {
                 assertEquals(AppUpdatePolicy.DOWNLOAD_PAGE,opened?.dataString)
             }
         } finally { ins.removeMonitor(monitor) }
+    }
+
+    @Test fun aboutKeepsIconCreditAndUsageTermsInBothThemes() {
+        val original = WeatherSettings.themeMode(context)
+        try {
+            for(dark in listOf(false,true)) {
+                WeatherSettings.setThemeMode(context,if(dark) WeatherSettings.THEME_DARK else WeatherSettings.THEME_LIGHT)
+                ins.runOnMainSync { WeatherSettings.applyNightMode(context) }
+                ActivityScenario.launch(WeatherAboutActivity::class.java).use { scenario ->
+                    scenario.onActivity { activity ->
+                        val credit = activity.findViewById<TextView>(R.id.tvIconSourceDescription).text.toString()
+                        assertTrue(credit.contains(IconAttribution.AUTHOR))
+                        assertTrue(credit.contains(IconAttribution.COLLECTION_URL))
+                        assertTrue(credit.contains("授权"))
+                        assertTrue(activity.findViewById<TextView>(R.id.tvWeatherAboutVersion).text.contains(BuildConfig.VERSION_NAME))
+                    }
+                }
+            }
+        } finally {
+            context.getSharedPreferences("weather_settings",Context.MODE_PRIVATE).edit().putString("theme_mode",original).commit()
+            ins.runOnMainSync { WeatherSettings.applyNightMode(context) }
+        }
     }
 }

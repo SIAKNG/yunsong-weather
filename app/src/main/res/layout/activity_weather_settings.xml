@@ -258,20 +258,6 @@
                     android:textSize="12sp" />
             </LinearLayout>
 
-            <TextView
-                android:id="@+id/btnIconSource"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="64dp"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/btn_see_more"
-                android:gravity="center"
-                android:padding="12dp"
-                android:lineSpacingExtra="3dp"
-                android:text="@string/icon_source_settings_label"
-                android:textColor="@color/text_primary"
-                android:textSize="14sp"
-                android:visibility="gone" />
             <LinearLayout
                 android:id="@+id/appInformationPanel"
                 android:layout_width="match_parent"
