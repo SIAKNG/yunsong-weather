@@ -255,16 +255,23 @@ class WeatherRefreshPolicyTest {
 
     @Test
     fun solarCalculatorProvidesDaylightAndTwilightForNormalLatitude() {
-        val noon = java.util.Calendar.getInstance().apply {
-            set(2026, java.util.Calendar.JUNE, 20, 12, 0, 0)
-            set(java.util.Calendar.MILLISECOND, 0)
-        }.timeInMillis
-        val data = SunAstronomyData(noon, noon + HOUR, latitude = 31.2, longitude = 121.5, sourceName = "测试")
-        val phases = SunAstronomyCalculator.phases(data)
-        assertNotNull(SunAstronomyCalculator.estimatedDaylightDuration(data))
-        assertNotNull(phases.civilDawn)
-        assertNotNull(phases.civilDusk)
-        assertTrue(SunAstronomyCalculator.sunAzimuth(noon, 31.2, 121.5) in 0.0..360.0)
+        // This fixture describes a Shanghai civil day, not the CI host's UTC day.
+        val originalZone = java.util.TimeZone.getDefault()
+        try {
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Asia/Shanghai"))
+            val noon = java.util.Calendar.getInstance().apply {
+                set(2026, java.util.Calendar.JUNE, 20, 12, 0, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }.timeInMillis
+            val data = SunAstronomyData(noon, noon + HOUR, latitude = 31.2, longitude = 121.5, sourceName = "测试")
+            val phases = SunAstronomyCalculator.phases(data)
+            assertNotNull(SunAstronomyCalculator.estimatedDaylightDuration(data))
+            assertNotNull(phases.civilDawn)
+            assertNotNull(phases.civilDusk)
+            assertTrue(SunAstronomyCalculator.sunAzimuth(noon, 31.2, 121.5) in 0.0..360.0)
+        } finally {
+            java.util.TimeZone.setDefault(originalZone)
+        }
     }
 
     @Test
