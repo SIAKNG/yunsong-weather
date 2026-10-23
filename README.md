@@ -1,83 +1,229 @@
-# 云松天气
+<h1 align="center">云松天气</h1>
+<p align="center">把天气、趋势与出行建议，放进一张清晰的天气画面。</p>
+<p align="center"><b>Android 原生界面 · 动态天气 · 毛玻璃卡片 · 交互式预报</b></p>
+<p align="center">
+  <a href="https://github.com/SIAKNG/yunsong-weather/releases/latest">下载安装包</a> ·
+  <a href="#界面预览">界面预览</a> · <a href="#天气源与数据边界">天气源</a> ·
+  <a href="#第一次使用">使用方法</a> · <a href="#项目组成与实现">工程组成</a>
+</p>
 
-面向 Android 的原生天气应用，使用 Kotlin、XML 和自定义 View 构建。
-本仓库仅包含用户自行配置天气 API 的版本，不提供内置天气密钥或个人服务账户。
-公开工程**不包含原第三方天气/生活建议 SVG**，也不通过 Base64、加密包或 Git 历史隐藏携带这些文件。
-缺少私有素材时，源码使用独立绘制的简化图标，天气数据和功能不受影响。
+云松天气是一款使用 **Kotlin、XML 与自定义 View / Canvas** 构建的 Android 天气应用。
+首页用动态天空和毛玻璃卡片组织实况、短时降雨、48 小时趋势、多日预报及生活建议；
+点开卡片，可在详情页横向拖动图表，对照不同时刻的气象变化。
 
-当前版本：**1.1**。维护者：**SIAKNG**。
-应用显示名称统一为“云松天气”；版本标识 `1.1-userapi` 用于区分构建，包名仍为 `com.example.weatherapp.userapi`。
-当前维护构建号：`5`。
+本仓库仅提供**用户自行配置天气 API 的版本**，不包含维护者的天气密钥、个人服务账户或签名私钥。
+应用名为“云松天气”，版本标识 `1.1-userapi`，当前维护构建号 `5`。维护者：SIAKNG。
 
-> 当前处于**私有审阅阶段**。仓库、源码和安装包仅供获授权账号检查；未经维护者再次确认，不转为公开。
+> **当前为私有审阅阶段，尚未公开发布。** 源码及安装包只供有权限的账号检查，未经确认不会改为公开。
+>
+> 截图采用北京、上海等示例城市；**气象数值、预报、建议和预警均为模拟数据**，不是实时天气或真实预警。
+> 它们用于展示界面，并不代表任意 API 都具有图片中的全部权限。
 
-## 下载与更新
+## 功能一览
 
-[查看安装包下载页](https://github.com/SIAKNG/yunsong-weather/releases/latest) · [全部版本](https://github.com/SIAKNG/yunsong-weather/releases)
-
-在应用“天气设置”底部，同一张毛玻璃卡片提供“检查更新”“使用帮助与 API 指引”“关于云松天气”。
-点击“检查更新”直接打开 GitHub 安装包下载页；发现较新正式 APK 时，行尾会提示“有新版本”。
-应用不下载或自动安装 APK，不索取 GitHub 密码、Token 或账号权限。
-
-- 成功检查缓存六小时；检查失败后十分钟再尝试，避免频繁请求。
-- 仓库私有、没有可用正式 APK、网络受限或 GitHub 限流时，不会误报“已是最新版本”。
-- 私有审阅阶段，应用匿名查询无法读取版本信息，显示“暂无法检查”；网页下载需要有权限的账号登录。
-  未来仓库经确认公开后，同一检查入口即可读取公开正式版本。
-- 发布使用专用正式签名。旧调试签名测试版无法直接覆盖，请先妥善记录自己的配置；不要随意卸载。
-
-界面与版本规则说明见 [docs/UPDATES.md](docs/UPDATES.md)。
-
-## 功能
-
-- 城市管理、定位天气、动态天气背景与毛玻璃卡片。
-- 实况、48 小时及多日预报，以及温度、体感、风力、气压、能见度、湿度、紫外线和空气质量详情。
-- 分钟降雨趋势、日出日落、生活建议和本机天气提醒。
-- 深色/浅色模式、首次使用引导、API 获取教程与接口支持情况检测。
-- 本地缓存、配置加密存储、按所选天气源和实际权限显示可用数据。
-- GitHub 安装包下载入口与新版本提示，和使用帮助、关于页集中显示。
-
-功能是否有数据、可用时长和更新频率取决于你填写的 API、套餐、地区及供应商响应；不承诺所有 API 均覆盖以上项目。
-通知使用 Android 本机调度，可能受系统后台限制影响，并非服务端实时推送。
-
-### 页面与操作
-
-| 页面 | 可以做什么 |
+| 功能 | 可以做什么 |
 | --- | --- |
-| 天气首页 | 查看当前天气与卡片，左右切换已保存城市，下拉刷新 |
-| 城市管理 | 点顶部地址进入，添加、切换或管理城市 |
-| 预报详情 | 点 48 小时或多日卡片，横滑选择时刻，查看各项趋势与摘要 |
-| 指标详情 | 查看空气质量、紫外线、体感、风、气压、能见度、湿度和日出日落 |
-| 生活建议 | 查看穿衣、出行等建议；实际项目依赖接口覆盖 |
-| 天气设置 | 配置天气源、主题、单位和本机提醒，查看帮助、版本与下载入口 |
+| 实时天气 | 查看气温、天气现象、体感、高低温、空气质量等内容 |
+| 动态场景与玻璃卡片 | 按天气及昼夜展示晴、多云、阴、雨、雪、雾霾等背景，并实时模糊卡片背后的内容 |
+| 城市与定位 | 顶部地址进入城市管理，搜索、添加、切换城市，查看新城市天气预览；定位可按需授权 |
+| 分钟级降雨 | 展示有数据的短时降雨强度、变化曲线、峰值与雨势说明 |
+| 48 小时详情 | 图示摘要概括温度、降水、风、紫外线和 AQI；多个图表共享时间轴，支持横滑与回到当前 |
+| 多日天气 | 查看每日天气和温度范围，进入详情对照小时级天气、温度、体感、风向、紫外线、湿度及空气质量 |
+| 六项指标详情 | 紫外线、体感温度、风力、气压、能见度、湿度分别提供趋势、状态和相关生活建议 |
+| 空气质量 | AQI 仪表、等级、污染物浓度和小时趋势；排名数据有效且覆盖城市时显示全国 AQI 排名 |
+| 日出日落 | 日出、日落、太阳轨迹、昼长，以及本地计算的晨昏和霞光参考时段 |
+| 生活建议 | 展示接口提供的穿衣、运动、防晒、洗车等指数，用统一图标和语义颜色提示 |
+| 天气预警 | 预警入口、等级、发布时间、影响区域、详情和防御建议 |
+| 本机提醒 | 降雨、大风、明显变温、预警、每日天气提醒；提供权限诊断和测试入口 |
+| 主题与单位 | 深色、浅色、系统主题，以及温度、风、气压、能见度单位调整 |
+| 引导与 API 检测 | 交互式首次引导、两种天气源申请教程、接口可用性和支持范围表格 |
+| 缓存与更新 | 优先恢复已有天气内容，按数据类别判断新鲜度；设置中提供 GitHub 下载及新版本提示 |
 
-### 设置页实机效果
+**数据时长不是固定承诺。** 48 小时和多日布局按实际返回的数据展示，多日卡布局最多组织 15 日预报。
+历史/昨日对比、分钟降水、空气质量、预警、生活指数可能需要额外配置或权限；不是每个套餐都能提供。
 
-以下仅截取新合并卡片，不含地址、坐标或 API。私有仓库期间“暂无法检查”为预期状态。
+## 界面预览
 
-| 浅色 | 深色 |
+可点击图片查看大图。以下是本项目原生页面在真机上的渲染，不是其他软件截图，也不是另画的概念图。
+来源、模拟情景与隐私处理详见 [截图说明](docs/SCREENSHOTS.md)。
+
+### 天气页面与动态场景
+
+| 晴天布局 | 夜间场景 | 降雨与预警入口 |
+| :---: | :---: | :---: |
+| <img src="docs/screenshots/showcase/weather-home-day.jpg" width="240" alt="北京模拟晴天天气页面"> | <img src="docs/screenshots/showcase/weather-home-night.jpg" width="240" alt="北京模拟夜间场景"> | <img src="docs/screenshots/showcase/weather-home-rain.jpg" width="240" alt="降雨与模拟预警入口"> |
+
+### 指标卡片、分钟降雨与城市管理
+
+| 首页气象卡片 | 分钟级降雨曲线 | 多城市管理 |
+| :---: | :---: | :---: |
+| <img src="docs/screenshots/showcase/weather-metrics-cards.jpg" width="240" alt="空气质量与气象卡片"> | <img src="docs/screenshots/showcase/minute-rain-card.jpg" width="240" alt="模拟分钟降雨强度与峰值"> | <img src="docs/screenshots/showcase/cities.jpg" width="240" alt="北京上海演示城市列表"> |
+
+分钟降雨卡在有有效降水曲线时出现；接口未返回、未开通权限或未来窗口无降水时，卡片可能不会显示。
+图片中的雨势及预警特意构造为演示情景，不是对北京实际天气的播报。
+
+| 多日预报与日出日落卡片 | 生活建议与页面底部 |
+| :---: | :---: |
+| <img src="docs/screenshots/showcase/weather-daily-card.jpg" width="300" alt="首页多日预报和太阳时刻卡片"> | <img src="docs/screenshots/showcase/weather-footer-life.jpg" width="300" alt="首页生活建议与数据支持说明"> |
+
+### 48 小时天气详情
+
+| 浅色模式 | 深色模式 |
+| :---: | :---: |
+| <img src="docs/screenshots/showcase/forecast-48h-light.jpg" width="300" alt="浅色48小时详情与图示摘要"> | <img src="docs/screenshots/showcase/forecast-48h-dark.jpg" width="300" alt="深色48小时详情与趋势图"> |
+
+温度范围条与四组图示概括天气变化，并保留穿衣、雨具、防晒等建议。
+多个图表共享时间轴，可横滑选中时刻，通过“回到当前”返回当前附近；历史部分采用淡化样式。
+
+### 多日天气详情
+
+| 浅色模式 | 深色模式 |
+| :---: | :---: |
+| <img src="docs/screenshots/showcase/forecast-multiday-light.jpg" width="300" alt="浅色多日天气详情"> | <img src="docs/screenshots/showcase/forecast-multiday-dark.jpg" width="300" alt="深色多日天气详情"> |
+
+日期条与下方表格联动，时刻、天气、温度、体感等随选中位置平滑变化。
+布局和可用天数由实际数据决定，不用不存在的数据把预报强行填满。
+
+### 空气质量与六项指标
+
+| 空气质量 | 紫外线 | 体感温度 |
+| :---: | :---: | :---: |
+| <img src="docs/screenshots/showcase/air-quality.jpg" width="240" alt="AQI污染物和趋势"> | <img src="docs/screenshots/showcase/metric-uv.jpg" width="240" alt="紫外线趋势与防晒建议"> | <img src="docs/screenshots/showcase/metric-feels_like.jpg" width="240" alt="体感与实际温度对照"> |
+
+| 风力 | 气压 | 能见度 |
+| :---: | :---: | :---: |
+| <img src="docs/screenshots/showcase/metric-wind.jpg" width="240" alt="风向风力详情"> | <img src="docs/screenshots/showcase/metric-pressure.jpg" width="240" alt="气压详情"> | <img src="docs/screenshots/showcase/metric-visibility.jpg" width="240" alt="能见度详情"> |
+
+| 湿度 | 日出日落 | 生活建议 |
+| :---: | :---: | :---: |
+| <img src="docs/screenshots/showcase/metric-humidity.jpg" width="240" alt="湿度趋势与建议"> | <img src="docs/screenshots/showcase/sunrise-sunset.jpg" width="240" alt="太阳轨迹和晨昏时段"> | <img src="docs/screenshots/showcase/life-advice.jpg" width="240" alt="彩色生活指数与建议"> |
+
+八类详情支持左右箭头和非图表区域横滑，图表自身继续处理时刻选择。
+排名数据不可用时明确提示，不把示例 AQI 拼成真实全国排名。
+晨昏/霞光是本地参考计算，并非供应商的“实时霞光”观测。
+
+### 预警、引导与设置
+
+| 预警详情（模拟） | 首次交互引导 | 天气设置 |
+| :---: | :---: | :---: |
+| <img src="docs/screenshots/showcase/weather-alerts.jpg" width="240" alt="明确标注模拟的预警详情"> | <img src="docs/screenshots/showcase/first-run-guide.jpg" width="240" alt="首次使用交互演示"> | <img src="docs/screenshots/showcase/settings.jpg" width="240" alt="设置帮助关于更新入口"> |
+
+### API 申请教程
+
+| 彩云 Token | 和风 API Key |
+| :---: | :---: |
+| <img src="docs/screenshots/showcase/api-guide-caiyun.jpg" width="300" alt="彩云Token申请教程"> | <img src="docs/screenshots/showcase/api-guide-qweather.jpg" width="300" alt="和风Host及API Key申请教程"> |
+
+API 填写页保留防截图保护，文档不展示真实 Token、API Key 或个人 API Host。
+图标作者、来源及使用说明集中保留在“关于云松天气”，设置页不再单独显示来源按钮。
+
+## 天气源与数据边界
+
+### 可配置服务
+
+| 服务 | 如何配置 | 应用用途 |
+| --- | --- | --- |
+| 彩云天气 | 用户自己的 v2 Token，兼容 v2.6 / v2.7 路径 | 实况、小时/日预报、可用的分钟降水、AQI 及相关字段；部分天文和历史使用兼容路径 |
+| 和风天气 | 自己的 **API Host + API Key** | 可作为天气来源，亦可在配置及权限可用时提供预警、生活指数、空气质量等补充内容 |
+
+申请入口：[彩云开放平台](https://platform.caiyunapp.com/) · [和风开发平台](https://dev.qweather.com/)。
+和风在用户配置中仅使用 API Key，不要求普通用户制作 JWT 私钥。
+供应商的注册、套餐、免费额度与权限可能变化，请以官方控制台和应用内检测为准。
+
+### 补充数据与本地计算
+
+| 组成 | 用途与限制 |
 | --- | --- |
-| ![浅色信息卡片](docs/screenshots/settings-information-light.png) | ![深色信息卡片](docs/screenshots/settings-information-dark.png) |
+| Open-Meteo | 用于代码指定的部分补充和天气现象校验，不是天气源选择器中的第三个来源，不应覆盖有效主源数据 |
+| 生态环境部公开 AQI 数据 | 同批次、数据完整且覆盖城市时计算排名，异常时显示不可用 |
+| Android 定位/地址解析 | 经授权后获取位置；也可手动添加城市使用 |
+| 本地计算 | 太阳轨迹、晨昏、摘要和部分说明；计算结果不冒充原始观测 |
 
-## 安装和第一次使用
+这些接口不是一个统一免费套餐。**App 支持某项展示，不等于你填写的 API 已开通该数据。**
+历史、分钟降雨、预警等可用性可能各不相同，请在配置页点击“检测 API 支持情况”。
+当前不把小米、心知、墨迹列为可选天气源。
 
-1. 从本仓库的 Releases 下载正式发布的 APK，允许系统安装该文件。
-2. 完成引导，在“设置 → 天气源/API 配置”填写自己的接口信息。
-3. 彩云天气填写 Token；和风天气填写控制台分配的 API Host 和 API Key。
-4. 点击“检测 API 支持情况”检查能力，确认后保存并使用。
-5. 点击首页地址管理城市，点击天气卡片查看更多详情。定位和通知权限可按需开启。
+## 第一次使用
 
-申请入口：[彩云开放平台](https://platform.caiyunapp.com/)、[和风开发平台](https://dev.qweather.com/)。
-申请流程和要求以供应商当前页面为准。不要在 Issue、截图、代码或聊天中公开真实 API Key。
+1. 在 [Releases](https://github.com/SIAKNG/yunsong-weather/releases/latest) 下载 `yunsong-weather.apk` 并安装。
+2. 完成交互引导，认识地址、城市切换、卡片详情和刷新。
+3. 在“天气设置 → 天气源/API 配置”按教程申请、填写自己的接口信息。
+4. 彩云填 v2 Token；和风填 API Host 和 API Key，不要使用他人的密钥。
+5. 点击“检测 API 支持情况”查看表格，或“保存并使用”验证后使用。
+6. 点击地址管理城市，按需授权定位；点击卡片进入详情，拖动图表查看其他时刻。
+7. 需要本机提醒时，再开启通知并检查后台、电池优化和精确闹钟权限。
 
-## 本地构建
+未配置 API 时，首页提示先配置，不会把这种情况统一当成网络错误。
+本项目不提供维护者的服务配额，不保证任意免费凭据覆盖全部功能。
 
-建议使用支持此工程的 Android Studio，安装 Android SDK 37、JDK 25，使用随项目提供的 Gradle Wrapper 9.5.0。
-工程使用 Android Gradle Plugin 9.3.1，其内置 Kotlin 支持无需额外声明 Kotlin 插件。
-命令行安装 SDK 时，Google 软件包名称是 `platforms;android-37.0`，不是 `platforms;android-37`。
+### 更新与安装
 
-1. 克隆仓库并在 Android Studio 打开。
-2. 让 Android Studio 自动生成本机 `local.properties` 和 SDK 路径；该文件不可提交。
-3. Windows 执行下列命令；macOS/Linux 将 `gradlew.bat` 换为 `./gradlew`。
+检查更新、使用帮助与 API 指引、关于云松天气集中在设置底部的一张毛玻璃面板中。
+发现带 APK 的较新正式版本时，行尾会提示新版本；点击打开 GitHub 下载页，不自动后台安装。
+成功检查缓存六小时，失败后十分钟再试；错误或限流不会误报“已是最新版本”。
+
+私有审阅阶段 App 无法匿名读取私有 Release，会显示“暂无法检查”；网页需有权限账号登录。
+未来经确认公开后，同一入口即可读取公开版本；不会把 GitHub Token 塞进 App 绕过限制。
+
+正式包使用专用发布证书，**不能直接覆盖旧调试签名版**。请勿贸然卸载，以免丢失城市和 API 配置。
+更多规则见 [更新说明](docs/UPDATES.md)。
+
+## 项目组成与实现
+
+本项目是以 **`:app` 为主体的单模块 Android 工程**。下表为文件职责划分，不代表独立 Gradle 模块；
+排版参考仓库不列作本工程的模块或依赖。
+
+| 逻辑组成 | 主要实现 | 职责 |
+| --- | --- | --- |
+| 首页与城市 | `MainActivity`、`WeatherFragment`、`CityManageActivity`、`CityPreviewActivity` | 城市分页、地址、卡片和预览 |
+| 背景与玻璃 | `WeatherBackgroundView`、`WeatherBackgroundPalette`、`BlurCardView`、`DetailGlassSurface` | 动态场景、调色、模糊、描边和阴影 |
+| 预报图表 | `HourlyForecastDetailActivity`、`ForecastDetailActivity`、自定义 Chart View | 48 小时/多日、时间轴、高亮和回到当前 |
+| 指标与导航 | `MetricDetailActivity`、`AirQualityDetailActivity`、`SunDetailActivity`、`DetailContentPager` | 八类详情、跟手切换和天文展示 |
+| 数据接入 | `CaiyunApi.kt`、`QWeatherApi.kt`、`OpenMeteo.kt`、`AirQualityTimeline` | 请求、解析、来源与时间对齐 |
+| 缓存与历史 | `WeatherCache`、`CitySummaryCache`、`LifeAdviceCache`、历史时间线/快照文件 | 启动恢复、分组新鲜度和历史对照 |
+| 建议与预警 | `LifeAdvice`、`LifeAdviceActivity`、`AlertActivity` | 指数、建议分组、预警等级和正文 |
+| 提醒与调度 | `WeatherNotificationCenter`、`WeatherNotificationLedger`、`WeatherBackgroundScheduler` | 本机任务、闹钟、诊断和去重 |
+| 配置与帮助 | `UserApiConfiguration`、`ApiCapabilityViewModel`、`ApiTutorialActivity`、`AppUpdateChecker` | 加密配置、支持表格、教程和更新 |
+
+### 工程目录
+
+```text
+app/
+  src/main/          页面、图表、天气接入与业务逻辑
+  src/userApi/       自填接口版本资源与隐私/配置差异
+  src/test/          逻辑单元测试
+  src/androidTest/   真机回归及显式启用的文档截图夹具
+gradle/              依赖版本目录与 Wrapper
+docs/                更新、素材来源、截图说明和图片
+third-party/         第三方许可
+tools/               源码上传边界检查
+.github/workflows/   单测与 Release 构建
+```
+
+### 技术栈
+
+| 类别 | 当前采用 |
+| --- | --- |
+| 语言/UI | Kotlin、XML、View / Canvas、AndroidX Activity / AppCompat、Material Components |
+| 分页与刷新 | ViewPager2、SwipeRefreshLayout 及项目手势/动画封装 |
+| 网络与解析 | Retrofit、Gson、协程及已有网络访问封装 |
+| 本地保存 | SharedPreferences、DataStore；用户配置通过 Android Keystore / AES-GCM 加密 |
+| 后台任务 | WorkManager、AlarmManager 及系统启动/升级恢复入口 |
+| 图标/系统兼容 | AndroidSVG、程序绘制；OPPO 动画使用可选适配，其他设备使用回退效果 |
+| 测试 | JUnit 4、AndroidX Test、真机截图与配置保留检查 |
+| 构建 | JDK 25、Gradle 9.5.0、AGP 9.3.1（内置 Kotlin 支持）、SDK 37 |
+
+依赖版本以 [版本目录](gradle/libs.versions.toml) 和 [构建文件](app/build.gradle.kts) 为准。
+本项目不是 Compose / Hilt 多模块 Clean Architecture 工程，不把参考仓库的技术栈写成本项目事实。
+
+## 构建与验证
+
+最低运行版本 **Android 7.0（API 24）**；相关真机检查使用 Android 16。
+不同版本、厂商的模糊、转场和后台调度可能有差异，不承诺全部设备完全一致。
+
+1. 安装兼容的 Android Studio、JDK 25 和 SDK 37，克隆并打开工程。
+2. 本机生成 `local.properties`，不要提交它。
+3. SDK 命令行包名是 `platforms;android-37.0`，不是 `platforms;android-37`。
 
 ```powershell
 .\gradlew.bat :app:testUserApiDebugUnitTest
@@ -85,39 +231,46 @@
 .\gradlew.bat :app:assembleUserApiRelease
 ```
 
-Debug 用于开发；Release 默认生成**未签名 APK**，正式分发前须使用自己保管的发布密钥签名。
-仓库不提供或保存任何签名私钥。自行构建包的签名可能与已安装版本不同，不能因此直接覆盖升级。
-不要为了安装测试包贸然卸载已有版本，以免丢失配置和城市数据。
+macOS / Linux 使用 `./gradlew`，默认 APK 输出在 `app/build/outputs/apk/`。
+Release 默认**未签名**，开发者须自行保管发布证书；仓库没有维护者的签名私钥。
+测试覆盖解析、时间线、缓存、导航、图表策略、更新和部分通知逻辑；真机另查 UI、深浅色和配置保留。
+测试通过不等于所有天气源/设备/权限组合都已穷尽。不要在日用手机直接运行可能卸载应用的测试任务。
 
-### 可选的本机素材
+## 隐私、缓存与提醒限制
 
-维护者的个人构建可使用仓库外、已取得相应许可的图标目录：
+- 查天气时，所需坐标、IP 和认证信息会发送给对应服务；手动城市也需查询该城市坐标。
+- 用户 API 在设备端加密保存，不进代码、截图或 Release；自填版本禁用应用备份。
+- 启动优先恢复已有内容，再按观测时间更新；实况/预警/分钟降雨、小时预报、日/天文采用不同新鲜度策略。
+- 历史/昨日对比只在有可用数据时展示；缓存或本地推导不冒充实时观测。
+- 通知为**本机调度**，受省电、自启动、后台定位和通知权限影响，不是云端推送，不能保证分钟级预警必达。
+- 本机提示不能替代气象台预警或防灾指引，重要出行/防灾决定请同时关注官方信息。
+- 更新请求不含天气密钥或坐标；GitHub 仍会接收请求 IP、网络元数据和应用版本信息。
+
+## 许可证与素材
+
+维护者有权授权的代码按 **GPL-3.0-only** 提供，见 [LICENSE](LICENSE)。
+第三方依赖、图标和商标保留原作者权利及许可，不因代码开源自动重新授权为 GPL。
+
+原天气图标来自 iconfont 用户“桑榆菲碗”的[天气图标集](https://www.iconfont.cn/collections/detail?cid=53861)。
+按维护者提供的信息，其限免费非商用使用；原 SVG 公开再分发权限仍待明确，因此源码不包含这批原 SVG，
+也不通过 Git 历史、Base64 或加密包暗藏。源码默认使用独立绘制的简化图形。
+
+维护者本机构建可从仓库外加载有相应许可的素材：
 
 ```powershell
 .\gradlew.bat :app:assembleUserApiRelease -PprivateIconAssetsDir="D:/private-assets/weather-app"
 ```
 
-目录结构与注意事项见 [docs/PRIVATE_ARTWORK.md](docs/PRIVATE_ARTWORK.md)。没有此参数也可以正常构建。
-包含原素材的 APK 仍可能被提取或截屏，不能保证“不可逆向”；仅排除公开源码并不扩大图标使用/分发许可。
+展示截图和维护者安装包可能采用独立许可素材，默认源码构建的图标细节可能不同。
+APK 素材仍可被提取或截图，不保证不可逆向，也不扩大素材使用/分发许可。
+详见 [私有素材边界](docs/PRIVATE_ARTWORK.md)、[图标来源](docs/ICON_SOURCES.md)、[第三方声明](THIRD_PARTY_NOTICES.md)。
 
-## 数据和隐私
+## 反馈与文档参考
 
-- 查询天气时，坐标、IP 及认证信息会按功能发送给对应服务；部分缺失字段可能使用补充数据源。
-- 相关服务包含彩云天气、和风天气、Open-Meteo、空气质量公开数据及城市检索服务，具体使用情况以代码和应用内说明为准。
-- 用户配置在设备端通过 Android Keystore/AES-GCM 存储；本地缓存用于加速显示。
-- 自填版本禁用应用备份，不包含维护者的内置 API、个人联系方式、本机测试截图或设备记录。
-- 不要把带有地址、坐标或真实凭证的日志和截图提交为问题反馈。
+反馈请说明版本、系统、天气源、复现步骤、预期和实际表现，并删除地址、坐标、凭据和私人通知记录。
+安全问题请先查看 [SECURITY.md](SECURITY.md)，不要提交未经检查的完整日志。
 
-## 许可证与素材
-
-维护者有权授权的项目代码按 **GPL-3.0-only** 提供，见 [LICENSE](LICENSE)。
-第三方代码、图标及商标保留原权利人的权利和适用条款；不因本仓库声明 GPL 而自动重新授权。
-素材来源和依赖说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
-天气图标来源为 iconfont 用户“桑榆菲碗”的[天气图标集](https://www.iconfont.cn/collections/detail?cid=53861)。
-维护者说明其限免费非商用使用；当前仍待确认原 SVG 公开再分发权限，图标不按项目 GPL 重新授权。
-因此本仓库不分发该批原 SVG；发布 APK 若包含第三方素材，素材仍按原作者的独立许可处理。
-
-## 反馈
-
-请描述应用版本、Android 版本、复现步骤、预期和实际表现，并先删除个人地址及凭证。
-安全问题请先按 [SECURITY.md](SECURITY.md) 处理，不要公开有效密钥。
+本文的“功能—截图—工程—构建—数据与许可”组织方式参考了
+[MinimalistWeather](https://github.com/ByronNote/MinimalistWeather) 与
+[weather-none](https://github.com/qnmlgbd250/weather-none) 的介绍形式。
+这是排版参考，不表示采用其架构、全部功能或代码；功能和组成说明以本仓库实际实现为依据。
