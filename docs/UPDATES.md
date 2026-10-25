@@ -29,7 +29,7 @@
 
 ## 后续发布约定
 
-1. 在 [CHANGELOG.md](../CHANGELOG.md) 顶部积累待发布变更；发布时增加版本号、日期和实际变更。
+1. 在 [CHANGELOG.md](../CHANGELOG.md) 顶部新增版本号、日期和实际变更，同步在 README.md 版本更新区顶部新增条目；保留此前所有版本的介绍、更新内容与下载入口，不覆盖旧记录。
 2. 使用 [发布说明模板](RELEASE_TEMPLATE.md) 编写对应 GitHub Release 正文，不只上传安装包。
 3. 标签使用 `v1.1`、`v1.1.1` 等正式数字版本；APK 使用 `yunsong-weather-版本号.apk`。
 4. 递增 Android versionCode，保持正式证书一致；正文保留 `<!-- yunsong-version-code: N -->`，N 为实际构建号。
