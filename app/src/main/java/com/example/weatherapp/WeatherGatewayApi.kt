@@ -150,6 +150,16 @@ object WeatherDataRepository {
         hourlySteps: Int,
         callback: (GatewayResult<CaiyunResponse>) -> Unit
     ) {
+        if (WeatherSettings.useOpenMeteo(context)) {
+            val sourceKey=WeatherSettings.sourceKey(context)
+            Thread {
+                val result=OpenMeteoSource.fetch(lat,lon)
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    callback(if(sourceKey==WeatherSettings.sourceKey(context)) result else GatewayResult(code=409,message="天气源已变更"))
+                }
+            }.start()
+            return
+        }
         val token = embeddedCaiyunToken(context)
         if (token.isBlank()) {
             callback(GatewayResult(code = 503, message = if (BuildConfig.USER_CONFIGURABLE) "请在设置中填写彩云 Token" else "天气服务构建配置缺失"))
@@ -193,9 +203,12 @@ object WeatherDataRepository {
         span: Int = 15,
         hourlySteps: Int = 360
     ): GatewayResult<CaiyunResponse> = try {
-        val token = embeddedCaiyunToken(context)
-        if (token.isBlank()) GatewayResult(code = 503, message = "天气服务构建配置缺失")
-        else fetchOwnCaiyunWeatherBlocking(context, token, lon, lat, span, hourlySteps)
+        if (WeatherSettings.useOpenMeteo(context)) OpenMeteoSource.fetch(lat,lon)
+        else {
+            val token = embeddedCaiyunToken(context)
+            if (token.isBlank()) GatewayResult(code = 503, message = "天气服务构建配置缺失")
+            else fetchOwnCaiyunWeatherBlocking(context, token, lon, lat, span, hourlySteps)
+        }
     } catch (_: Exception) {
         GatewayResult(code = 0, message = "网络错误")
     }

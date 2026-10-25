@@ -75,7 +75,7 @@ class ApiConfigurationActivity : AppCompatActivity() {
             setTextColor(ContextCompat.getColor(this@ApiConfigurationActivity, R.color.text_primary)); layout.addView(this)
         }
         text("天气源 · 自行配置", 22f)
-        text("本安装包不提供任何内置密钥。凭证仅加密保存在本机，不参与备份。完整功能取决于你所填写接口的权限。")
+        text("不填接口也能使用 Open-Meteo 免费天气。填写自己的彩云或和风接口后优先使用个人接口，不再请求 Open-Meteo。凭证仅加密保存在本机。")
         fun action(value: String, callback: () -> Unit) = TextView(this).apply {
             text=value; textSize=15f; gravity=android.view.Gravity.CENTER
             setPadding(20,20,20,20); minHeight=(48*resources.displayMetrics.density).toInt()
@@ -89,8 +89,8 @@ class ApiConfigurationActivity : AppCompatActivity() {
         if(old.qweatherApiKey.isBlank() && (old.qweatherPem.isNotBlank() || old.qweatherKid.isNotBlank()))
             text("旧配置使用私钥方式。本版改为仅支持 API Key，请按教程填写自己的 Host + API Key；旧加密内容在你主动保存前不会被清除。")
         val source = Spinner(this).apply {
-            adapter = ArrayAdapter(this@ApiConfigurationActivity, android.R.layout.simple_spinner_dropdown_item, listOf("彩云主源 · 和风按字段补充", "和风天气主源"))
-            setSelection(if (old.source == WeatherSettings.SOURCE_QWEATHER) 1 else 0); layout.addView(this)
+            adapter = ArrayAdapter(this@ApiConfigurationActivity, android.R.layout.simple_spinner_dropdown_item, listOf("自动 · 个人 API 优先，无配置时免费天气", "彩云主源 · 已填和风可补充", "和风天气主源"))
+            setSelection(when(old.source) {WeatherSettings.SOURCE_QWEATHER->2;WeatherSettings.SOURCE_CAIYUN->1;else->0}); layout.addView(this)
         }
         val controls=mutableListOf<View>(source)
         fun field(idValue: Int,label: String, value: String, secret: Boolean = false): EditText {
@@ -129,7 +129,7 @@ class ApiConfigurationActivity : AppCompatActivity() {
             if(actionId==EditorInfo.IME_ACTION_DONE) { WindowInsetsControllerCompat(window,v).hide(WindowInsetsCompat.Type.ime());v.clearFocus();true } else false
         }
         fun formConfiguration() = UserApiConfiguration.Config(
-                    if (source.selectedItemPosition == 1) WeatherSettings.SOURCE_QWEATHER else WeatherSettings.SOURCE_CAIYUN,
+                    when(source.selectedItemPosition) {2->WeatherSettings.SOURCE_QWEATHER;1->WeatherSettings.SOURCE_CAIYUN;else->"auto"},
                     caiyun.text.toString().trim(), version.selectedItem.toString(), host.text.toString().trim(),
                     apiKey.text.toString().trim(), "", "", "", amap.text.toString().trim())
         fun checkForm(config: UserApiConfiguration.Config,saved: Boolean) {
@@ -154,7 +154,7 @@ class ApiConfigurationActivity : AppCompatActivity() {
         }.apply {id=R.id.apiCheck;controls.add(this)}
         action("清除所有接口配置") {
             androidx.appcompat.app.AlertDialog.Builder(this@ApiConfigurationActivity)
-                .setMessage("清除本机 API 配置？清除后需重新填写才能获取天气。")
+                .setMessage("清除本机 API 配置？清除后将使用 Open-Meteo 免费天气，不影响已添加的城市。")
                 .setNegativeButton("取消", null).setPositiveButton("清除") { _, _ ->
                     UserApiConfiguration.clear(this@ApiConfigurationActivity); finish()
                 }.show()

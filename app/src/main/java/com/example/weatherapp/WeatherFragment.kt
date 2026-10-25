@@ -747,6 +747,7 @@ class WeatherFragment : Fragment() {
         updateTopMaskSize()
         alignBottom()
         appliedSource = WeatherSettings.dataSource(requireContext())
+        appliedApiRevision = UserApiConfiguration.revision(requireContext())
         // 先呈现不超过一天的上次成功数据；网络结果回来后再无感覆盖，避免弱网冷启动白屏。
         restoreCachedWeather()
         if (previewMode || activity !is MainActivity) {
@@ -1147,6 +1148,7 @@ class WeatherFragment : Fragment() {
             val src = WeatherSettings.dataSource(requireContext())
             if (src != appliedSource || (BuildConfig.USER_CONFIGURABLE &&
                     appliedApiRevision != UserApiConfiguration.revision(requireContext()))) {
+                resetSourceState()
                 appliedSource = src
                 fetchWeather(page.lng, page.lat)
             } else {
@@ -1707,6 +1709,32 @@ class WeatherFragment : Fragment() {
         }
     }
 
+    private fun resetSourceState() {
+        ++fetchSeq;++metricHistoryFetchSeq;++metricFetchSeq;++alertRequestVersion;++calibrationFetchSeq
+        lastServerTimeMillis=0;lastPageRefreshAt=0
+        lastTemp=null;lastHigh=null;lastLow=null;lastFeelsLike=null;lastSkycon=null
+        lastUvIndex=null;lastUvDesc=null;lastHumidity=null;lastPressureHpa=null;lastVisibilityKm=null
+        lastWindDir=null;lastWindDirDeg=null;lastWindSpeedKmh=null;lastWindScale=null;lastPrecipMm=null
+        sunriseMillis=0;sunsetMillis=0;yesterdaySunsetMillis=0;nextSunriseMillis=0
+        caiyunV26Astro=emptyList();caiyunLifeAdvice=emptyList();lifeAdvice=emptyList()
+        hourlyLabels=emptyList();hourlyTemps=emptyList();hourlySkycons=emptyList();hourlyProbs=emptyList()
+        hourlyMetricPoints=emptyList();hourlyPast=emptyList();forecastSkyByHour=emptyMap()
+        yesterdayMetricPoints=emptyList();historicalAirQualityPoints=emptyList();airQualityPoints=emptyList()
+        currentAirQuality=null;airQualityTimeline=AirQualityTimeline.empty(AirQualitySource.UNKNOWN)
+        historicalSupplementedKinds=emptySet();metricHistoryLoading=false;metricSupplementLoading=false
+        primaryDaily=emptyList();openMeteoDaily=emptyList();dailySource=null
+        clearAlerts();refreshAlertEntry();renderMinutely(emptyList(),emptyList(),null)
+        tvTemp.text="--";tvDesc.text="正在获取所选天气源";tvHighLow.text="--"
+        tvSunrise.text="--:--";tvSunset.text="--:--"
+        hourlyChart.setData(emptyList(),emptyList(),emptyList(),emptyList())
+        dailyListContainer.removeAllViews()
+        dailyRows.clear()
+        dailyChart.setData(emptyList(),emptyList(),emptyList(),emptyList(),emptyList(),emptyList())
+        sunTrack.setInterval(0,0,false,System.currentTimeMillis())
+        tvSunDuration.text="--";tvSunCountdownTime.text="--"
+        updateDetailCards();renderAqiCard(null);renderLifeAdvice()
+    }
+
     private fun restoreCachedWeather() {
         val context = context ?: return
         val caiyunStartup=if(WeatherSettings.useQWeather(context)) null else WeatherCache.loadCaiyunStartup(context,page)
@@ -1714,7 +1742,7 @@ class WeatherFragment : Fragment() {
         val cached = if (WeatherSettings.useQWeather(context)) null else
             freshCaiyun?.takeIf { it.result?.realtime != null } ?: caiyunStartup?.display
         if (cached != null) {
-            appliedSource = WeatherSettings.SOURCE_CAIYUN
+            appliedSource = WeatherSettings.dataSource(context)
             cached.serverTime?.let { lastServerTimeMillis = it * 1000L }
             showWeather(cached.result)
             displayingOldSnapshot = freshCaiyun?.result?.realtime == null
@@ -1776,42 +1804,37 @@ class WeatherFragment : Fragment() {
         onComplete: ((Boolean) -> Unit)? = null
     ) {
         if (BuildConfig.USER_CONFIGURABLE) {
+            if(appliedSource!=WeatherSettings.dataSource(requireContext()) || appliedApiRevision!=UserApiConfiguration.revision(requireContext())) {
+                resetSourceState();appliedSource=WeatherSettings.dataSource(requireContext())
+            }
             appliedApiRevision = UserApiConfiguration.revision(requireContext())
             val config = UserApiConfiguration.read(requireContext())
-            if (!config.hasPrimary()) {
-                ++fetchSeq
-                updateApiSetupNotice(true)
-                setStatusError(WeatherAccessFeedback.MISSING_API)
-                tvDesc.text = "请先配置天气 API"
-                finishInitialLoading()
-                completeDataLoad(fromRefresh, onComplete, false)
-                return
-            }
             updateApiSetupNotice(false)
-            if (config.source == WeatherSettings.SOURCE_QWEATHER) {
+            if (config.effectiveSource() == WeatherSettings.SOURCE_QWEATHER) {
                 fetchQWeather(lng, lat, fromRefresh, onComplete)
                 return
             }
         }
         // 彩云 v2.7 主请求：实测 15 天、360 小时和 120 分钟降水均可用。
         val seq = ++fetchSeq
+        val sourceKey = WeatherSettings.sourceKey(requireContext())
         caiyunV26Astro = emptyList()
         caiyunLifeAdvice = emptyList()
-        fetchCaiyunV26Astronomy(lng, lat, seq)
+        if (!WeatherSettings.useOpenMeteo(requireContext())) fetchCaiyunV26Astronomy(lng, lat, seq)
         WeatherDataRepository.enqueueCaiyunWeather(requireContext(), lng, lat, 15, 360) { response ->
                     if (!isAdded) {
                         completeDataLoad(fromRefresh, onComplete, false)
                         return@enqueueCaiyunWeather
                     }
                     // 定位刷新后会用新坐标再请求一次，旧响应直接作废，不算失败
-                    if (seq != fetchSeq) {
+                    if (seq != fetchSeq || sourceKey != WeatherSettings.sourceKey(requireContext())) {
                         completeDataLoad(fromRefresh, onComplete, true)
                         return@enqueueCaiyunWeather
                     }
                     val body = response.body
                     if (response.isSuccessful && body?.result?.realtime?.temperature?.isFinite() == true &&
                         WeatherRefreshPolicy.canCommitObservation(System.currentTimeMillis(), body.serverTime?.times(1000), lastServerTimeMillis)) {
-                        appliedSource = WeatherSettings.SOURCE_CAIYUN
+                        appliedSource = WeatherSettings.dataSource(requireContext())
                         displayingOldSnapshot = false
                         lastPageRefreshAt = System.currentTimeMillis()
                         // 记录数据发布时间（秒 → 毫秒），刷新成功时显示"数据发布于 X 分钟前"
@@ -1820,11 +1843,12 @@ class WeatherFragment : Fragment() {
                         WeatherCache.saveCaiyun(requireContext(), page, body)
                         showWeather(body.result)
                         // 只在彩云已有数据成功后启动和风字段补齐，避免补充源抢先渲染主页面。
-                        fetchQWeatherSupplement(lng, lat, seq)
+                        if (!WeatherSettings.useOpenMeteo(requireContext())) fetchQWeatherSupplement(lng, lat, seq)
                         completeDataLoad(fromRefresh, onComplete, true)
                     } else {
-                        // 彩云整包不可用时，才允许和风完整降级展示。
-                        fetchQWeather(lng, lat, fromRefresh, onComplete)
+                        setStatusError(if(WeatherSettings.useOpenMeteo(requireContext())) "Open-Meteo 暂不可用，请稍后重试" else "彩云请求失败，请检查接口配置与网络")
+                        finishInitialLoading()
+                        completeDataLoad(fromRefresh, onComplete, false)
                     }
                 }
     }
@@ -1832,10 +1856,12 @@ class WeatherFragment : Fragment() {
     /** 和风仅按字段补齐：空气质量缺失污染物与彩云未覆盖的生活指数。 */
     private fun fetchQWeatherSupplement(lng: Double, lat: Double, seq: Int) {
         val appContext = requireContext().applicationContext
+        if (BuildConfig.USER_CONFIGURABLE && !UserApiConfiguration.read(appContext).hasQWeather()) return
+        val sourceKey=WeatherSettings.sourceKey(appContext)
         Thread {
             val advice = QWeatherApi.fetchLifeAdvice(appContext, lat, lng)
             activity?.runOnUiThread {
-                if (isAdded && seq == fetchSeq && advice.isNotEmpty()) {
+                if (isAdded && seq == fetchSeq && sourceKey==WeatherSettings.sourceKey(appContext) && advice.isNotEmpty()) {
                     lifeAdvice = LifeAdviceFactory.fromQWeather(advice)
                     renderLifeAdvice()
                 }
@@ -1843,7 +1869,7 @@ class WeatherFragment : Fragment() {
             val bundle = runCatching { QWeatherApi.fetchAll(appContext, lat, lng) }.getOrNull()
             val act = activity ?: return@Thread
             act.runOnUiThread {
-                if (!isAdded || seq != fetchSeq || bundle == null) return@runOnUiThread
+                if (!isAdded || seq != fetchSeq || sourceKey!=WeatherSettings.sourceKey(appContext) || bundle == null) return@runOnUiThread
                 val qAdvice = LifeAdviceFactory.fromQWeather(bundle.lifeAdvice)
                 if (qAdvice.isNotEmpty()) lifeAdvice = qAdvice
                 renderLifeAdvice()
@@ -1863,8 +1889,9 @@ class WeatherFragment : Fragment() {
      * 均由本地算法推算。请求不参与首页主数据的成功判定，失败时安全降级到 v2.7 已有 astro。
      */
     private fun fetchCaiyunV26Astronomy(lng: Double, lat: Double, seq: Int) {
+        val sourceKey=WeatherSettings.sourceKey(requireContext())
         WeatherDataRepository.enqueueCaiyunAstronomy(requireContext(), lng, lat) { response ->
-                    if (!isAdded || seq != fetchSeq) {
+                    if (!isAdded || seq != fetchSeq || sourceKey!=WeatherSettings.sourceKey(requireContext())) {
                         return@enqueueCaiyunAstronomy
                     }
                     val astro = response.body?.result?.daily?.astro.orEmpty()
@@ -1875,8 +1902,11 @@ class WeatherFragment : Fragment() {
                 }
     }
 
-    private fun sunDataSourceName(): String =
-        if (caiyunV26Astro.isNotEmpty()) "彩云天气 v2.6" else "彩云天气"
+    private fun sunDataSourceName(): String = when(WeatherSettings.dataSource(requireContext())) {
+        WeatherSettings.SOURCE_OPEN_METEO -> "Open-Meteo · 模型数据/本地计算"
+        WeatherSettings.SOURCE_QWEATHER -> "和风天气"
+        else -> if (caiyunV26Astro.isNotEmpty()) "彩云天气 v2.6" else "彩云天气"
+    }
 
     // ===== 和风天气数据源 =====
     private fun fetchQWeather(
@@ -1886,6 +1916,7 @@ class WeatherFragment : Fragment() {
         onComplete: ((Boolean) -> Unit)?
     ) {
         val seq = ++fetchSeq
+        val sourceKey=WeatherSettings.sourceKey(requireContext())
         Thread {
             val bundle = try {
                 QWeatherApi.fetchAll(requireContext(), lat, lng)
@@ -1902,7 +1933,7 @@ class WeatherFragment : Fragment() {
                     completeDataLoad(fromRefresh, onComplete, false)
                     return@runOnUiThread
                 }
-                if (seq != fetchSeq) {
+                if (seq != fetchSeq || sourceKey!=WeatherSettings.sourceKey(requireContext())) {
                     completeDataLoad(fromRefresh, onComplete, true)
                     return@runOnUiThread
                 }
@@ -2182,6 +2213,22 @@ class WeatherFragment : Fragment() {
     // ===== 底部数据来源：随页面内容自然上推出现，不再到达底部后独立淡入 =====
     private fun showDataSourceFooter() {
         if (!::ivSourceLogo.isInitialized) return
+        if (BuildConfig.USER_CONFIGURABLE) {
+            ivSourceLogo.visibility=View.GONE
+            ivSourceSupplementLogo.visibility=View.GONE
+            tvStatus.text=when(WeatherSettings.dataSource(requireContext())) {
+                WeatherSettings.SOURCE_OPEN_METEO -> "Open-Meteo · 模型天气数据（CC BY 4.0）"
+                WeatherSettings.SOURCE_QWEATHER -> "数据来自和风天气"
+                else -> if(UserApiConfiguration.read(requireContext()).hasQWeather()) "数据来自彩云天气、和风天气" else "数据来自彩云天气"
+            }
+            tvStatus.visibility=View.VISIBLE
+            tvStatus.setOnClickListener { if(WeatherSettings.useOpenMeteo(requireContext()))
+                startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse("https://open-meteo.com/"))) }
+            tvStatusTime.text="更新于${formatClock(lastServerTimeMillis)}"
+            tvStatusTime.visibility=View.VISIBLE
+            bottomStatusContainer.visibility=View.VISIBLE;bottomStatusContainer.alpha=1f
+            return
+        }
         // 使用公开展示的官方字标位图，而不是以系统字体拼写品牌名称。
         ivSourceLogo.setImageResource(R.drawable.brand_caiyun_weather_compact)
         ivSourceLogo.contentDescription = "彩云天气"
@@ -2460,11 +2507,19 @@ class WeatherFragment : Fragment() {
         result.hourly?.let { showHourly(it) }
         result.daily?.let { showDaily(it) }
         // 彩云详情图表使用同一份 result.hourly.air_quality；实时快照仅覆盖时间线的“现在”。
-        applyAirQualityTimeline(AirQualityTimelineFactory.caiyun(result))
+        val timeline=AirQualityTimelineFactory.caiyun(result,lastServerTimeMillis.takeIf {it>0} ?: System.currentTimeMillis())
+        if(WeatherSettings.useOpenMeteo(requireContext())) {
+            historicalAirQualityPoints=timeline.hourly.filter {it.timeMillis<currentHourMillis()}.map {it.copy(source=AirQualitySource.OPEN_METEO)}
+            applyAirQualityTimeline(timeline.copy(source=AirQualitySource.OPEN_METEO,
+                realtime=timeline.realtime?.copy(source=AirQualitySource.OPEN_METEO),
+                hourly=timeline.hourly.filter {it.timeMillis>=currentHourMillis()}.map {it.copy(source=AirQualitySource.OPEN_METEO)}))
+            tvAqiDesc.text="模型污染物参考估算，非监测站实测"
+        } else applyAirQualityTimeline(timeline)
         // 仅在至少有一类可展示天气数据时退出加载态；接口返回空对象时继续显示准确骨架。
         if (hasRenderableWeatherData()) finishInitialLoading()
         // 预警独立使用和风；彩云缓存及响应中的预警一律不进入界面。
-        supplementAlertsFromQWeather(emptySet()) { refreshAlertEntry() }
+        if(WeatherSettings.useOpenMeteo(requireContext())) { clearAlerts();refreshAlertEntry() }
+        else supplementAlertsFromQWeather(emptySet()) { refreshAlertEntry() }
         // 分钟级降水：彩云免费套餐 minutely 可能未返回，为空时隐藏卡片
         val m = result.minutely
         val minutelyValues = m?.precipitation2h ?: m?.precipitation
@@ -2543,6 +2598,8 @@ class WeatherFragment : Fragment() {
     ) {
         val request = ++alertRequestVersion
         val appContext = requireContext().applicationContext
+        if(BuildConfig.USER_CONFIGURABLE && !UserApiConfiguration.read(appContext).hasQWeather()) { clearAlerts();onCompleted();return }
+        val sourceKey=WeatherSettings.sourceKey(appContext)
         Thread {
             val alerts = try {
                 QWeatherApi.fetchAlertsOnlyChecked(appContext, page.lat, page.lng)
@@ -2551,7 +2608,7 @@ class WeatherFragment : Fragment() {
             }
             val act = activity ?: return@Thread
             act.runOnUiThread {
-                if (!isAdded || view == null || request != alertRequestVersion) return@runOnUiThread
+                if (!isAdded || view == null || request != alertRequestVersion || sourceKey!=WeatherSettings.sourceKey(appContext)) return@runOnUiThread
                 clearAlerts()
                 val seen = HashSet(existingKeys)
                 val now = System.currentTimeMillis()
@@ -2872,6 +2929,11 @@ class WeatherFragment : Fragment() {
             futureIndexes.map { probByTime[tempList[it].datetime] ?: 0.0 }
         hourlyMetricPoints = listOf(realtimeMetricPoint(currentHour, currentIndex?.let(::metricAt))) +
             futureIndexes.map(::metricAt)
+        if(WeatherSettings.useOpenMeteo(requireContext())) {
+            yesterdayMetricPoints=parsedTimes.indices.filter {parsedTimes[it]<currentHour}.map(::metricAt).takeLast(24)
+            historicalSupplementedKinds=emptySet()
+            hasSelectedSourceMetricHistory=yesterdayMetricPoints.isNotEmpty()
+        }
         restoreCachedHourlyHistory()
         renderHourlyChart()
         requestSelectedSourceMetricHistory()
@@ -2912,6 +2974,10 @@ class WeatherFragment : Fragment() {
     /** 恢复同源历史缓存；彩云再请求 v2.6 begin，以最新成功结果替换缓存。 */
     private fun requestSelectedSourceMetricHistory() {
         val context = context ?: return
+        if(WeatherSettings.useOpenMeteo(context) || WeatherSettings.useQWeather(context)) {
+            metricHistoryLoading=false;dispatchMetricReadyIfComplete();return
+        }
+        val sourceKey=WeatherSettings.sourceKey(context)
         hasSelectedSourceMetricHistory = false
         metricHistoryLoading = false
         val primarySource = "caiyun_v26"
@@ -2939,7 +3005,7 @@ class WeatherFragment : Fragment() {
         WeatherDataRepository.enqueueCaiyunMetricHistory(
             context, page.lng, page.lat, beginSeconds
         ) { response ->
-            if (!isAdded || request != metricHistoryFetchSeq) return@enqueueCaiyunMetricHistory
+            if (!isAdded || request != metricHistoryFetchSeq || sourceKey!=WeatherSettings.sourceKey(requireContext())) return@enqueueCaiyunMetricHistory
             if (response.isSuccessful) {
                 response.body?.result?.daily?.let(::applyYesterdayDailyHistory)
                 val history = metricHistoryFromCaiyun(response.body?.result)
@@ -3168,7 +3234,7 @@ class WeatherFragment : Fragment() {
 
     private fun fallbackMetricPoints(): List<HourlyMetricPoint> {
         val start = (System.currentTimeMillis() / 3_600_000L) * 3_600_000L
-        return List(24) { index ->
+        return List(1) { index ->
             HourlyMetricPoint(
                 timeMillis = start + index * 3_600_000L,
                 temperature = lastTemp,
@@ -3357,7 +3423,7 @@ class WeatherFragment : Fragment() {
         val astroList = daily.astro.orEmpty()
         applyCaiyunSunAstronomy(caiyunV26Astro.ifEmpty { astroList })
 
-        lifeAdvice = LifeAdviceFactory.fromQWeather(LifeAdviceCache.load(requireContext(), page.lat, page.lng))
+        lifeAdvice = if(WeatherSettings.useOpenMeteo(requireContext())) emptyList() else LifeAdviceFactory.fromQWeather(LifeAdviceCache.load(requireContext(), page.lat, page.lng))
         renderLifeAdvice()
 
         // 彩云字段按日期对齐，不能按数组索引把天气/降水错配。

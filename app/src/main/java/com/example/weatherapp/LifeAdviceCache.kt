@@ -19,7 +19,7 @@ object LifeAdviceCache {
         SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()))
 
     fun load(context: Context, lat: Double, lng: Double): List<QLifeIndex> = runCatching {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(key(lat, lng), null)
+        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(WeatherSettings.sourceKey(context)+key(lat, lng), null)
         Gson().fromJson(raw, Array<QLifeIndex>::class.java)?.toList().orEmpty()
     }.getOrDefault(emptyList())
 
@@ -28,7 +28,8 @@ object LifeAdviceCache {
         val appContext = context.applicationContext
         val cached = load(appContext, lat, lng)
         val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val k = key(lat, lng)
+        val epoch=WeatherSettings.sourceKey(appContext)
+        val k = epoch+key(lat, lng)
         val now = System.currentTimeMillis()
         // 南风天气的公开首页将生活建议视为当日内容持续展示；这里同样允许完整或
         // 部分成功结果在 6 小时内直接复用，避免每次进入都把已有建议重新置为等待。
@@ -37,6 +38,7 @@ object LifeAdviceCache {
         if (now - prefs.getLong(ATTEMPT_PREFIX + k, 0L) < RETRY_MS) return cached
         prefs.edit().putLong(ATTEMPT_PREFIX + k, now).apply()
         val fresh = runCatching(fetch).getOrDefault(emptyList())
+        if(epoch!=WeatherSettings.sourceKey(appContext)) return emptyList()
         val merged = (cached + fresh).associateBy { it.type }.values.sortedBy { it.type.toIntOrNull() ?: 99 }
         if (merged.isNotEmpty()) {
             prefs.edit()
@@ -52,7 +54,7 @@ object LifeAdviceCache {
      * 否则保留的失败节流会把清空后的首个请求错误地当作刚刚失败。
      */
     internal fun clear(context: Context, lat: Double, lng: Double) {
-        val k = key(lat, lng)
+        val k = WeatherSettings.sourceKey(context)+key(lat, lng)
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .remove(k)
             .remove(ATTEMPT_PREFIX + k)

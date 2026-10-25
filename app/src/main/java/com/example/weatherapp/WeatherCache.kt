@@ -12,19 +12,21 @@ object WeatherCache {
     private const val PREFS = "weather_response_cache"
     private const val SCHEMA_VERSION = 3
     private const val KEY_SCHEMA_VERSION = "schema_version"
-    private const val MAX_PAYLOAD_CHARS = 350_000
+    private const val MAX_PAYLOAD_CHARS = 1_000_000
     private val gson = Gson()
     data class StartupSnapshot<T>(val fresh: T?,val display: T)
 
     /** Parse once; retain exactly the same TTL and display-only stale projection. */
     fun loadCaiyunStartup(context: Context,page: CityPage): StartupSnapshot<CaiyunResponse>? {
+        if (WeatherSettings.useQWeather(context)) return null
         migrateToUnifiedSchema(context)
-        val cached=load(context,key("unified_v3",page)) ?: return null
+        val cached=load(context,key(context,"unified_v3",page)) ?: return null
         val parsed=runCatching {gson.fromJson(cached.payload,CaiyunResponse::class.java)}.getOrNull() ?: return null
         return StartupSnapshot(pruneCaiyun(parsed,cached.ageMs),parsed)
     }
     fun loadQWeatherStartup(context: Context,page: CityPage): StartupSnapshot<QWeatherBundle>? {
-        val cached=load(context,key(WeatherSettings.SOURCE_QWEATHER,page)) ?: return null
+        if (!WeatherSettings.useQWeather(context)) return null
+        val cached=load(context,key(context,WeatherSettings.SOURCE_QWEATHER,page)) ?: return null
         val parsed=parseQWeatherPayload(cached.payload) ?: return null
         return StartupSnapshot(pruneQWeather(parsed,cached.ageMs),parsed)
     }
@@ -42,16 +44,17 @@ object WeatherCache {
                     rain[point.datetime]?.probability, uv[point.datetime]?.index?.toDoubleOrNull(), captured)
             })
         }
-        save(context, key("unified_v3", page), gson.toJson(response))
+        save(context, key(context,"unified_v3", page), gson.toJson(response))
     }
 
     fun saveQWeather(context: Context, page: CityPage, response: QWeatherBundle) {
-        save(context, key(WeatherSettings.SOURCE_QWEATHER, page), gson.toJson(response))
+        save(context, key(context,WeatherSettings.SOURCE_QWEATHER, page), gson.toJson(response))
     }
 
     fun loadCaiyun(context: Context, page: CityPage): CaiyunResponse? {
+        if (WeatherSettings.useQWeather(context)) return null
         migrateToUnifiedSchema(context)
-        return load(context, key("unified_v3", page))?.let { cached ->
+        return load(context, key(context,"unified_v3", page))?.let { cached ->
             runCatching { gson.fromJson(cached.payload, CaiyunResponse::class.java) }.getOrNull()
                 ?.let { pruneCaiyun(it, cached.ageMs) }
         }
@@ -63,7 +66,7 @@ object WeatherCache {
      */
     fun loadCaiyunDisplaySnapshot(context: Context, page: CityPage): CaiyunResponse? {
         migrateToUnifiedSchema(context)
-        return load(context, key("unified_v3", page))?.let { cached ->
+        return load(context, key(context,"unified_v3", page))?.let { cached ->
             runCatching { gson.fromJson(cached.payload, CaiyunResponse::class.java) }.getOrNull()
         }
     }
@@ -95,13 +98,13 @@ object WeatherCache {
     }
 
     fun loadQWeather(context: Context, page: CityPage): QWeatherBundle? =
-        load(context, key(WeatherSettings.SOURCE_QWEATHER, page))?.let { cached ->
+        (if (WeatherSettings.useQWeather(context)) load(context, key(context,WeatherSettings.SOURCE_QWEATHER, page)) else null)?.let { cached ->
             parseQWeatherPayload(cached.payload)
                 ?.let { pruneQWeather(it, cached.ageMs) }
         }
 
     fun loadQWeatherDisplaySnapshot(context: Context, page: CityPage): QWeatherBundle? =
-        load(context, key(WeatherSettings.SOURCE_QWEATHER, page))?.let { cached ->
+        (if (WeatherSettings.useQWeather(context)) load(context, key(context,WeatherSettings.SOURCE_QWEATHER, page)) else null)?.let { cached ->
             parseQWeatherPayload(cached.payload)
         }
 
@@ -175,10 +178,10 @@ object WeatherCache {
         return if (pruned.now == null && pruned.hourly.isEmpty() && pruned.daily.isEmpty()) null else pruned
     }
 
-    private fun key(source: String, page: CityPage): String = String.format(
+    private fun key(context: Context, source: String, page: CityPage): String = String.format(
         Locale.US,
         "weather_%s_%.3f_%.3f",
-        source,
+        (if (source == "unified_v3") WeatherSettings.dataSource(context) else source) + "_" + WeatherSettings.sourceKey(context),
         page.lat,
         page.lng
     )

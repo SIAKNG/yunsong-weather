@@ -5,7 +5,10 @@ import org.junit.Test
 
 class UserApiConfigurationTest {
     private fun caiyun() = UserApiConfiguration.Config(caiyunToken = "test_dummy_token")
-    @Test fun emptyPrimaryCannotBeSaved() { assertNotNull(UserApiConfiguration.validate(UserApiConfiguration.Config())) }
+    @Test fun emptyConfigurationUsesFreeSource() {
+        assertNull(UserApiConfiguration.validate(UserApiConfiguration.Config()))
+        assertEquals(WeatherSettings.SOURCE_OPEN_METEO,UserApiConfiguration.Config().effectiveSource())
+    }
     @Test fun caiyunVersionsAreExplicit() {
         assertNull(UserApiConfiguration.validate(caiyun()))
         assertNull(UserApiConfiguration.validate(caiyun().copy(caiyunVersion = "2.7")))
@@ -18,7 +21,7 @@ class UserApiConfigurationTest {
         listOf("http://test.qweatherapi.com", "test.qweatherapi.com.evil.test", "test.qweatherapi.com/path", "127.0.0.1", "user@host.qweatherapi.com").forEach {
             assertNotNull(UserApiConfiguration.validate(caiyun().copy(qweatherHost = it)))
         }
-        assertNull(UserApiConfiguration.validate(caiyun().copy(qweatherHost = "https://test.qweatherapi.com/")))
+        assertNull(UserApiConfiguration.validate(caiyun().copy(qweatherHost = "https://test.qweatherapi.com/",qweatherApiKey="dummy_key")))
     }
     @Test fun qweatherNeedsHostAndOneAuthenticationMethod() {
         val q = UserApiConfiguration.Config(source = WeatherSettings.SOURCE_QWEATHER, qweatherHost = "test.qweatherapi.com", qweatherApiKey = "dummy_key")

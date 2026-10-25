@@ -398,18 +398,14 @@ class CityManageActivity : AppCompatActivity() {
     private fun fetchCityWeather(index: Int) {
         val item = items.getOrNull(index) ?: return
         if (item.lng.isNaN() || item.lat.isNaN()) return
-        if (BuildConfig.USER_CONFIGURABLE && !UserApiConfiguration.read(this).hasPrimary()) {
-            item.weather = "请先配置天气源"
-            updateCard(index)
-            return
-        }
+        val epoch=WeatherSettings.sourceKey(this)
         if (WeatherSettings.useQWeather(this)) {
             val lat = item.lat; val lng = item.lng
             Thread {
                 val now = runCatching { QWeatherApi.fetchAll(this, lat, lng).now }.getOrNull()
                 runOnUiThread {
                     val current = items.getOrNull(index) ?: return@runOnUiThread
-                    if (isFinishing || isDestroyed || current.lat != lat || current.lng != lng) return@runOnUiThread
+                    if (isFinishing || isDestroyed || current.lat != lat || current.lng != lng || epoch!=WeatherSettings.sourceKey(this)) return@runOnUiThread
                     if (now != null) {
                         current.temp = WeatherSettings.tempText(this, now.temp)
                         current.weather = now.text
@@ -426,6 +422,7 @@ class CityManageActivity : AppCompatActivity() {
         }
         // 城市摘要与主页同样使用统一彩云主源缓存，避免每次进入重新刷所有城市。
         WeatherDataRepository.enqueueCaiyunWeather(this, item.lng, item.lat, 3, 3) { response ->
+            if(epoch!=WeatherSettings.sourceKey(this)) return@enqueueCaiyunWeather
             val cur = items.getOrNull(index) ?: return@enqueueCaiyunWeather
             val rt = response.body?.result?.realtime
             if (response.isSuccessful && rt != null) {

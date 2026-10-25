@@ -50,6 +50,16 @@ class ApiCapabilityProbe(private val transport: ApiProbeTransport? = null, priva
 
     fun run(config: UserApiConfiguration.Config, progress: (Int,String)->Unit = {_,_->}): ApiCapabilityReport {
         require(UserApiConfiguration.validate(config) == null) { "接口配置无效" }
+        if(config.effectiveSource()==WeatherSettings.SOURCE_OPEN_METEO) {
+            val w=request(ApiProbeRequest("Open-Meteo","天气与小时/日预报",OpenMeteoSource.weatherUrl(39.904,116.407)),progress)
+            val a=request(ApiProbeRequest("Open-Meteo","空气质量",OpenMeteoSource.airUrl(39.904,116.407)),progress)
+            result("Open-Meteo","免费天气",w) {
+                val response=runCatching {OpenMeteoSource.parse(it.toString(),a.root?.toString(),now)}.getOrNull()
+                if(response==null) add("Open-Meteo","天气数据",ApiSupport.FAILED,"未返回可解析天气，请稍后重试")
+                else rows.addAll(OpenMeteoSource.coverage(response,now))
+            }
+            checkCancellation();return ApiCapabilityReport(rows.toList(),now,requests)
+        }
         if(config.caiyunToken.isBlank()) unconfigured("彩云", "未填写 Token，彩云实况/预报/历史能力未检测")
         else caiyun(config,progress)
         if(!config.hasQWeather()) unconfigured("和风", "Host 或 API Key 未填全；生活建议和预警也需要和风配置")

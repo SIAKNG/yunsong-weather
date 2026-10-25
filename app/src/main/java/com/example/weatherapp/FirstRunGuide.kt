@@ -40,7 +40,7 @@ object FirstRunGuide {
         add(Step("点开卡片，拖动查看预报", "先打开 48 小时卡片，再左右拖动图表查看时间与数值。其他天气卡片也能点击查看详情。"))
         add(Step("向下拉动，刷新天气", "在演示首页向下拖动，完成一次刷新。离线时会保留上次天气；通知可在设置中按需开启。"))
         if (userApi) {
-            add(Step("找到天气源与官方 API", "点击设置，再打开天气源。彩云使用 v2 Token（不是 App Key + Secret）；和风仅需自己的 API Host 和 API Key。配置页的获取按钮提供逐步申请教程。"))
+            add(Step("选择免费天气或个人 API", "不填 API 默认使用 Open-Meteo。点击设置打开天气源，可选填彩云 Token 或和风 API Host + API Key，填写后会优先使用个人接口。配置页提供申请教程。"))
             add(Step("练习保存，查看接口能力", "点击演示表单的保存按钮，预览支持度表格。真实保存后会实测接口字段与范围；这里仅使用虚拟数据，不需要输入密钥。"))
         }
     }
@@ -146,7 +146,7 @@ object FirstRunGuide {
             linkScroll.visibility = if (state.index >= 3) View.VISIBLE else View.GONE
             previous.isEnabled = state.index > 0
             next.text = if (state.index < items.lastIndex) "下一步"
-                else if (BuildConfig.USER_CONFIGURABLE) "完成并填写 API" else "开始使用"
+                else "开始使用"
             scene.setStep(state.index, state.canAdvance)
             updateActions(); persist()
         }
@@ -161,7 +161,7 @@ object FirstRunGuide {
             if (state.next()) render()
             else if (state.allComplete) {
                 prefs.edit().putBoolean(COMPLETION_KEY, true).remove("index_v2").remove("mask_v2").apply()
-                remove(); onFinished(BuildConfig.USER_CONFIGURABLE)
+                remove(); onFinished(false)
             }
         }
         render()

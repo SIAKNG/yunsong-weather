@@ -109,7 +109,7 @@
                 android:background="@drawable/settings_card_bg"
                 android:lineSpacingExtra="4dp"
                 android:padding="16dp"
-                android:text="• 接口凭证：由你填写，使用 Android Keystore 与 AES-GCM 加密保存；不随安装包分发，关闭应用备份和设备迁移。\n• 定位与城市：查询天气时，城市坐标会发送给相应天气服务。启用补充数据时也会查询补充服务；城市搜索使用已配置的高德或系统地理编码。\n• 本地内容：保存城市、单位、天气缓存及通知记录留在本机。后台定位仅用于已开启的本机天气提醒。\n• 权限：不读取通讯录、短信、通话记录或相册；通知仅用于你启用的天气提醒。"
+                android:text="• 免费天气：未填个人 API 时使用 Open-Meteo；填写完整个人接口后优先使用彩云或和风，不再用免费源回填。\n• 接口凭证：仅在本机用 Android Keystore 与 AES-GCM 加密保存，不随安装包分发，不参与备份。\n• 定位与城市：查询坐标会发送给所选服务；免费源仅接收降精度坐标，但仍能看到请求 IP。\n• 本地内容：城市、单位、缓存及通知记录留在本机；后台定位仅用于已启用的天气提醒。\n• 权限：不读取通讯录、短信、通话记录或相册。"
                 android:textColor="@color/text_secondary"
                 android:textSize="14sp" />
 
@@ -133,7 +133,7 @@
                 android:padding="16dp"
                 android:autoLink="web"
                 android:lineSpacingExtra="4dp"
-                android:text="天气服务：彩云天气 https://caiyunapp.com/\n和风天气 QWeather https://www.qweather.com/\n缺失字段补充：Open-Meteo https://open-meteo.com/\n全国空气排名：生态环境部 https://www.mee.gov.cn/\n\n数据服务标识不代表联合开发或会员互通。本版本不包含作者私人联系方式。使用帮助可在设置中重新打开。"
+                android:text="默认免费天气：Open-Meteo https://open-meteo.com/ （CC BY 4.0，模型数据）\n个人接口可选：彩云天气 https://caiyunapp.com/\n和风天气 QWeather https://www.qweather.com/\n独立全国空气排名：生态环境部 https://www.mee.gov.cn/\n\n免费源的空气质量为模型参考估算，不是监测站实测；不提供中国雷达分钟降雨、官方预警和全量生活指数。数据服务标识不代表联合开发或会员互通。"
                 android:textColor="@color/text_primary"
                 android:textSize="15sp" />
         </LinearLayout>

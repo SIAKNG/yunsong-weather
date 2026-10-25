@@ -6,6 +6,7 @@ internal object ApiCapabilityPresentation {
         .replace("（App 请求15日）","").replace("（当前请求7日）","")
         .replace("（目标24小时）","").replace("pm25","PM2.5").replace("pm10","PM10")
     fun explanation(row: ApiCapabilityRow): String {
+        if(row.provider=="Open-Meteo") return row.detail
         val hours=Regex("^(\\d+)/(\\d+) 小时").find(row.detail)
         val days=Regex("^本次 (\\d+)/(\\d+) 日").find(row.detail)
         return when(row.support) {

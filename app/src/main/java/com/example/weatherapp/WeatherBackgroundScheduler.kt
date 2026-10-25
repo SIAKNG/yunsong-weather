@@ -195,17 +195,16 @@ private fun RefreshOutcome.asWorkResult(context: Context, task: String): Result 
 
 private object WeatherBackgroundRefresh {
     fun refresh(context: Context, city: CityPage, publishRisk: Boolean): RefreshOutcome = try {
-        if (BuildConfig.USER_CONFIGURABLE && !UserApiConfiguration.read(context).hasPrimary()) RefreshOutcome.NO_DATA
-        else if (WeatherSettings.useQWeather(context)) refreshQWeather(context, city, publishRisk)
-        else runCatching { refreshCaiyun(context, city, publishRisk) }.getOrDefault(RefreshOutcome.TRANSIENT_FAILURE).let { primary ->
-            if (primary != RefreshOutcome.SUCCESS) refreshQWeather(context, city, publishRisk) else primary
-        }
+        if (WeatherSettings.useQWeather(context)) refreshQWeather(context, city, publishRisk)
+        else refreshCaiyun(context, city, publishRisk)
     } catch (_: Exception) {
         RefreshOutcome.TRANSIENT_FAILURE
     }
 
     private fun refreshQWeather(context: Context, city: CityPage, publishRisk: Boolean): RefreshOutcome {
+        val epoch=WeatherSettings.sourceKey(context)
         val bundle = QWeatherApi.fetchAll(context, city.lat, city.lng)
+        if(epoch!=WeatherSettings.sourceKey(context)) return RefreshOutcome.NO_DATA
         if (bundle.now == null) return RefreshOutcome.TRANSIENT_FAILURE
         WeatherCache.saveQWeather(context, city, bundle)
         if (publishRisk) {
@@ -223,13 +222,16 @@ private object WeatherBackgroundRefresh {
     }
 
     private fun refreshCaiyun(context: Context, city: CityPage, publishRisk: Boolean): RefreshOutcome {
+        val epoch=WeatherSettings.sourceKey(context)
         val response = WeatherDataRepository.fetchCaiyunWeatherBlocking(context, city.lng, city.lat)
+        if(epoch!=WeatherSettings.sourceKey(context)) return RefreshOutcome.NO_DATA
         val body = response.body ?: return if (response.code == 401) RefreshOutcome.NO_DATA else RefreshOutcome.TRANSIENT_FAILURE
         if (!response.isSuccessful || body.result?.realtime == null) return RefreshOutcome.TRANSIENT_FAILURE
         WeatherCache.saveCaiyun(context, city, body)
         if (publishRisk) {
             publishCaiyunRain(context, city, body.result?.minutely)
             publishCaiyunChanges(context, city, body.result!!)
+            if(WeatherSettings.useOpenMeteo(context)) return RefreshOutcome.SUCCESS // No radar-minute or official alert capability.
             // 预警仅用和风；错误继续向 Worker 传播以重试，不发布彩云预警。
             val alerts = if (BuildConfig.USER_CONFIGURABLE && !UserApiConfiguration.read(context).hasQWeather())
                 body.result?.alert?.content.orEmpty().mapNotNull { caiyunAlertEvent(city, it) }

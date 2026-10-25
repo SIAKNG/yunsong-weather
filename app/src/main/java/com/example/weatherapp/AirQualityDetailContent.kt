@@ -50,6 +50,10 @@ internal class AirQualityDetailContent(
             .maxByOrNull { it.timeMillis }
         val aqi = current?.aqi
         findViewById<TextView>(R.id.tvAirQualitySummary).text = buildSummary(aqi, future, yesterday?.aqi)
+        if(intent.getStringExtra(EXTRA_SOURCE).orEmpty().contains("Open-Meteo")) {
+            findViewById<TextView>(R.id.tvAirQualityDetailTitle).text="空气质量参考 · 未来24小时"
+            findViewById<TextView>(R.id.tvAirQualitySummary).append("（模型参考估算，非监测站实测）")
+        }
         findViewById<AirQualityGaugeView>(R.id.airQualityGauge).setData(aqi, darkTheme)
         findViewById<AirPollutantGridView>(R.id.airPollutantGrid).setData(current, darkTheme)
         findViewById<TextView>(R.id.tvAqiLegend).text =

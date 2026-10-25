@@ -458,8 +458,8 @@ class WeatherSettingsActivity : AppCompatActivity() {
         if (BuildConfig.USER_CONFIGURABLE) {
             val config = UserApiConfiguration.read(this)
             findViewById<TextView>(R.id.tvSourceValue).text = when {
-                !config.hasPrimary() -> "未配置 · 点击填写"
-                config.source == WeatherSettings.SOURCE_QWEATHER -> "和风 · 自行配置"
+                config.effectiveSource() == WeatherSettings.SOURCE_OPEN_METEO -> "Open-Meteo · 免费默认"
+                config.effectiveSource() == WeatherSettings.SOURCE_QWEATHER -> "和风 · 自行配置"
                 else -> "彩云 ${config.caiyunVersion} · 自行配置"
             }
         }

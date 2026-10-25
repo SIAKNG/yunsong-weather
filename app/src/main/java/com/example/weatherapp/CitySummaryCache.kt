@@ -71,7 +71,7 @@ object CitySummaryCache {
         sourceKey(context), lat, lng
     )
 
-    private fun sourceKey(context: Context): String = "unified_v3"
+    private fun sourceKey(context: Context): String = WeatherSettings.sourceKey(context)
 
     private fun pruneIfNeeded(prefs: android.content.SharedPreferences) {
         val entries = prefs.all.keys.filter { it.endsWith("_at") }

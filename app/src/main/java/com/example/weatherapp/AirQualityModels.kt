@@ -7,7 +7,7 @@ import kotlin.math.roundToInt
 enum class AirQualitySource(val displayName: String) {
     CAIYUN("彩云天气"),
     QWEATHER("和风天气"),
-    OPEN_METEO("Open-Meteo 补充"),
+    OPEN_METEO("Open-Meteo · 模型污染物/AQI参考估算"),
     UNKNOWN("天气数据")
 }
 

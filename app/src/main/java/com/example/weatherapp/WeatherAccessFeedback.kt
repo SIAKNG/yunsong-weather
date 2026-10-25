@@ -4,7 +4,7 @@ import android.content.Context
 
 object WeatherAccessFeedback {
     const val MISSING_API = "尚未配置天气 API，请先填写个人接口"
-    fun needsApi(context: Context): Boolean = BuildConfig.USER_CONFIGURABLE && !UserApiConfiguration.read(context).hasPrimary()
+    fun needsApi(context: Context): Boolean = false // Open-Meteo is available without personal credentials.
     // Missing local configuration is not a network or remote authorization error.
     fun refreshResult(missingApi: Boolean, success: Boolean): String = when {
         missingApi -> MISSING_API

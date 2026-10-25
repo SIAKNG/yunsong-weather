@@ -80,7 +80,7 @@ object CaiyunWeatherHistorySnapshotCache {
 
     fun load(context: Context, page: CityPage): CaiyunWeatherHistorySnapshot? {
         val parsed = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(key(page), null)
+            .getString(key(context, page), null)
             ?.let { runCatching { gson.fromJson(it, CaiyunWeatherHistorySnapshot::class.java) }.getOrNull() }
             ?: return null
         val now = System.currentTimeMillis()
@@ -105,11 +105,11 @@ object CaiyunWeatherHistorySnapshotCache {
             daily = CaiyunWeatherHistoryPolicy.mergeDaily(old?.daily.orEmpty(), daily, now)
         )
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString(key(page), gson.toJson(merged))
+            .putString(key(context, page), gson.toJson(merged))
             .apply()
     }
 
-    private fun key(page: CityPage): String = String.format(
-        Locale.US, "%s_%.3f_%.3f", SOURCE, page.lat, page.lng
+    private fun key(context: Context, page: CityPage): String = String.format(
+        Locale.US, "%s_%.3f_%.3f", WeatherSettings.sourceKey(context), page.lat, page.lng
     )
 }

@@ -18,7 +18,7 @@ object UserApiConfiguration {
     private var cachedBlob: String? = null
     private var cachedConfig: Config? = null
     data class Config(
-        val source: String = WeatherSettings.SOURCE_CAIYUN,
+        val source: String = "auto",
         val caiyunToken: String = "",
         val caiyunVersion: String = "2.6",
         val qweatherHost: String = "",
@@ -31,12 +31,20 @@ object UserApiConfiguration {
         override fun toString(): String = "UserApiConfiguration.Config(source=$source, credentials=<redacted>)"
         fun hasQWeather(): Boolean = qweatherHost.isNotBlank() && qweatherApiKey.isNotBlank()
         fun hasPrimary(): Boolean = if (source == WeatherSettings.SOURCE_QWEATHER) hasQWeather() else caiyunToken.isNotBlank()
+        /** Local selection only: remote failure never changes the selected provider. */
+        fun effectiveSource(): String = when {
+            source == WeatherSettings.SOURCE_QWEATHER && hasQWeather() -> WeatherSettings.SOURCE_QWEATHER
+            source == WeatherSettings.SOURCE_CAIYUN && caiyunToken.isNotBlank() -> WeatherSettings.SOURCE_CAIYUN
+            caiyunToken.isNotBlank() -> WeatherSettings.SOURCE_CAIYUN
+            hasQWeather() -> WeatherSettings.SOURCE_QWEATHER
+            else -> WeatherSettings.SOURCE_OPEN_METEO
+        }
         // Retain legacy fields when reading encrypted data, but never send them from this distribution.
         fun jwtConfig() = QWeatherJwt.Config(qweatherHost, "", "", "", qweatherApiKey)
     }
 
     fun validate(config: Config): String? {
-        if (config.source !in listOf(WeatherSettings.SOURCE_CAIYUN, WeatherSettings.SOURCE_QWEATHER)) return "请选择天气源"
+        if (config.source !in listOf("auto", WeatherSettings.SOURCE_CAIYUN, WeatherSettings.SOURCE_QWEATHER)) return "请选择天气源"
         if (config.caiyunVersion !in listOf("2.6", "2.7")) return "彩云版本无效"
         if (config.caiyunToken.isNotEmpty() && !config.caiyunToken.matches(Regex("[A-Za-z0-9_-]+"))) return "彩云 Token 格式无效"
         if (config.qweatherHost.isNotBlank()) {
@@ -45,7 +53,9 @@ object UserApiConfiguration {
         }
         if (config.qweatherApiKey.any { it.isWhitespace() || it.code < 32 }) return "和风 API Key 格式无效"
         if (config.qweatherKid.isNotBlank() || config.qweatherSub.isNotBlank() || config.qweatherPem.isNotBlank()) return "自填版仅支持和风 API Key，请在配置页改用 API Key"
-        if (!config.hasPrimary()) return "请填写所选主天气源的完整配置"
+        if (config.qweatherHost.isBlank() != config.qweatherApiKey.isBlank()) return "和风 Host 和 API Key 请一并填写或一起留空"
+        if (config.source == WeatherSettings.SOURCE_CAIYUN && config.caiyunToken.isBlank() && config.hasQWeather()) return "请选择已配置的和风天气，或使用自动选择"
+        if (config.source == WeatherSettings.SOURCE_QWEATHER && !config.hasQWeather() && config.caiyunToken.isNotBlank()) return "请选择已配置的彩云天气，或使用自动选择"
         if (config.amapKey.isNotEmpty() && !config.amapKey.matches(Regex("[A-Za-z0-9]+"))) return "高德 Key 格式无效"
         return null
     }
