@@ -5,7 +5,7 @@
 打开“天气设置”，在底部信息卡片中点击“检查更新”，浏览器会打开本仓库的
 [最新版本下载页](https://github.com/SIAKNG/yunsong-weather/releases/latest)。
 页面正文提供版本号、功能介绍和本次更新；展开 **Assets（资源）**，选择 APK 安装包下载。
-当前安装包名为 `yunsong-weather-1.1.apk`，校验值见同页 `SHA256SUMS.txt`。
+当前安装包名为 `yunsong-weather-1.2.apk`，校验值见同页 `SHA256SUMS.txt`。
 应用只跳转下载页，不在后台自动下载或安装。
 
 历史版本及后续变更统一保存在 [更新记录](../CHANGELOG.md) 和各版本的 Releases 页面。
@@ -22,7 +22,7 @@
 
 ## 安装注意
 
-- 1.1 需要自行填写彩云 Token 或和风 API Host + API Key，不提供维护者的接口额度。
+- 1.2 无需配置即可使用 Open-Meteo 免费天气；可选填自己的彩云 Token 或和风 API Host + API Key，不提供维护者的接口额度。
 - Android 7.0 及以上可安装；具体数据范围取决于接口权限和返回内容。
 - 官方包使用专用发布证书。同一证书且 versionCode 递增时可覆盖升级；其他签名的旧测试版不能直接覆盖。
 - 请勿为了安装贸然卸载旧版，以免丢失 API、城市与设置。

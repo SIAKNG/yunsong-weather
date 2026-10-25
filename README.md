@@ -13,23 +13,23 @@
 点开卡片，可在详情页横向拖动图表，对照不同时刻的气象变化。
 
 本仓库仅提供**用户 API 配置版**，不包含维护者的天气密钥、个人服务账户或签名私钥。
-应用名为“云松天气”，版本标识 `1.1-userapi`，本地开发构建号 `6`。维护者：SIAKNG。
+应用名为“云松天气”，版本标识 `1.2-userapi`，构建号 `7`。维护者：SIAKNG。
 
-> 本地待发布更新：未填写个人 API 时默认使用 Open-Meteo；填写完整的彩云或和风接口后优先使用个人来源，不再用 Open-Meteo 回填。
-> GitHub 已发布的 1.1 附件仍为此前构建，尚未包含这次免费主源更新。接入与实测范围见 [Open-Meteo 覆盖说明](docs/OPEN_METEO.md)。
+未填写个人 API 时默认使用 Open-Meteo 免费天气源；填写完整的彩云或和风接口后优先使用个人来源。
+实际数据范围见 [Open-Meteo 覆盖说明](docs/OPEN_METEO.md)。
 
 > 截图采用北京、上海等示例城市；**气象数值、预报、建议和预警均为模拟数据**，不是实时天气或真实预警。
 > 它们用于展示界面，并不代表任意 API 都具有图片中的全部权限。
 
 ## 版本更新
 
-**当前版本：1.1 · 2026-10-23**
+**当前版本：1.2 · 2026-10-25**
 
-本次发布包括动态天气与毛玻璃卡片、分钟降雨、48 小时/多日交互图表、空气质量与六项气象详情、
-日出日落、生活建议、多城市、天气预警和本机提醒；支持自填彩云/和风 API、首次引导、接口检测及检查更新。
+- 新增 Open-Meteo 免费天气源，无需填写 API 即可查看天气；配置个人彩云或和风 API 后使用个人天气源。
+- 修复空气质量详情仪表盘的显示错误，恢复统一的渐变仪表盘效果。
 
-[下载 1.1 安装包](https://github.com/SIAKNG/yunsong-weather/releases/download/v1.1/yunsong-weather-1.1.apk) ·
-[查看 1.1 发布说明](https://github.com/SIAKNG/yunsong-weather/releases/tag/v1.1) ·
+[下载 1.2 安装包](https://github.com/SIAKNG/yunsong-weather/releases/download/v1.2/yunsong-weather-1.2.apk) ·
+[查看 1.2 发布说明](https://github.com/SIAKNG/yunsong-weather/releases/tag/v1.2) ·
 [完整更新记录](CHANGELOG.md)
 
 后续每次发布将在更新记录和对应 Releases 页面列出新增功能、优化、修复与安装注意事项。
@@ -161,15 +161,15 @@ API 填写页保留防截图保护，文档不展示真实 Token、API Key 或�
 
 ## 第一次使用
 
-1. 在 [Releases](https://github.com/SIAKNG/yunsong-weather/releases/latest) 下载 `yunsong-weather-1.1.apk` 并安装；后续安装包也在文件名中标明版本号。
+1. 在 [Releases](https://github.com/SIAKNG/yunsong-weather/releases/latest) 下载 `yunsong-weather-1.2.apk` 并安装；后续安装包也在文件名中标明版本号。
 2. 完成交互引导，认识地址、城市切换、卡片详情和刷新。
-3. 本地构建 6 可直接使用免费天气；如需增强数据，在“天气设置 → 天气源/API 配置”按教程选填自己的接口信息。
+3. 可直接使用免费天气；如需增强数据，在“天气设置 → 天气源/API 配置”按教程选填自己的接口信息。
 4. 彩云填 v2 Token；和风填 API Host 和 API Key，不要使用他人的密钥。
 5. 点击“检测 API 支持情况”查看表格，或“保存并使用”验证后使用。
 6. 点击地址管理城市，按需授权定位；点击卡片进入详情，拖动图表查看其他时刻。
 7. 需要本机提醒时，再开启通知并检查后台、电池优化和精确闹钟权限。
 
-本地构建 6 未配置个人 API 时使用 Open-Meteo；清除个人配置后恢复免费来源。自动模式下彩云优先，其次为完整的和风配置；两者都填写时可指定主源。
+未配置个人 API 时使用 Open-Meteo；清除个人配置后恢复免费来源。自动模式下彩云优先，其次为完整的和风配置；两者都填写时可指定主源。
 本项目不提供维护者的服务配额，不保证任意免费凭据覆盖全部功能。
 
 ### 更新与安装

@@ -17,7 +17,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
-/** 展示和风天气返回的全部生活指数，不改写其等级或建议文本。 */
+/** 展示选中天气源返回的生活指数；区分不支持与暂未返回。 */
 class LifeAdviceActivity : AppCompatActivity() {
     override fun onPostCreate(savedInstanceState: Bundle?) {
         super.onPostCreate(savedInstanceState)
@@ -55,7 +55,8 @@ class LifeAdviceActivity : AppCompatActivity() {
         val content = findViewById<LinearLayout>(R.id.lifeAdviceContent)
         if (items.isEmpty()) {
             content.addView(TextView(this).apply {
-                text = "和风天气生活建议暂未返回，稍后下拉刷新后再试。"
+                text = if (WeatherSettings.useOpenMeteo(this@LifeAdviceActivity)) "当前不支持"
+                    else "和风天气生活建议暂未返回，稍后下拉刷新后再试。"
                 setTextColor(ContextCompat.getColor(this@LifeAdviceActivity, R.color.text_secondary))
                 textSize = 14f
                 setPadding(dp(8), dp(24), dp(8), dp(24))
@@ -88,7 +89,8 @@ class LifeAdviceActivity : AppCompatActivity() {
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { bottomMargin = dp(10) }
-        val statusText = item.level.ifBlank { "暂无等级" }
+        val freeSource = WeatherSettings.useOpenMeteo(this@LifeAdviceActivity)
+        val statusText = item.level.ifBlank { if (freeSource) "当前不支持" else "暂无等级" }
         val statusColor = LifeAdviceStatusStyle.colorFor(item, dark)
         val head = LinearLayout(this@LifeAdviceActivity).apply { gravity = Gravity.CENTER_VERTICAL }
         head.addView(LifeAdviceIconView(this@LifeAdviceActivity).apply {
@@ -126,7 +128,7 @@ class LifeAdviceActivity : AppCompatActivity() {
         })
         addView(head)
         addView(TextView(this@LifeAdviceActivity).apply {
-            text = item.detail.ifBlank { "和风天气暂未提供文字建议。" }
+            text = item.detail.ifBlank { if (freeSource) "当前不支持" else "和风天气暂未提供文字建议。" }
             textSize = 14f
             setLineSpacing(0f, 1.22f)
             setTextColor(ContextCompat.getColor(this@LifeAdviceActivity, R.color.text_primary))

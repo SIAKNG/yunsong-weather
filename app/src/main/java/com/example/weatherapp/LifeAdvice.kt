@@ -213,13 +213,19 @@ class LifeAdviceStripView @JvmOverloads constructor(
     attrs: android.util.AttributeSet? = null
 ) : View(context, attrs) {
     private var items: List<LifeAdviceItem> = emptyList()
+    private var unsupportedText: String? = null
     private val advicePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; typeface = Typeface.DEFAULT_BOLD }
     private val iconBackdropPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private var darkTheme = false
     private val iconBorder = WeatherFrostedBorderDrawable(resources.displayMetrics.density, 10f, WeatherSettings.isDarkTheme(context))
 
     fun setAdvice(value: List<LifeAdviceItem>, dark: Boolean) {
-        items = value.take(3)
+        val freeSource = WeatherSettings.useOpenMeteo(context)
+        items = value.take(3).map { item ->
+            if (freeSource && item.level.isBlank()) item.copy(level = "当前不支持") else item
+        }
+        unsupportedText = if (freeSource && items.isEmpty()) "当前不支持" else null
+        contentDescription = unsupportedText ?: items.joinToString("，") { "${it.title}：${it.level}" }
         darkTheme = dark
         requestLayout(); invalidate()
     }
@@ -232,6 +238,13 @@ class LifeAdviceStripView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val h = height.toFloat()
+        unsupportedText?.let { text ->
+            advicePaint.textSize = dp(14f)
+            advicePaint.color = androidx.core.content.ContextCompat.getColor(context, R.color.text_secondary)
+            canvas.drawText(text, width / 2f,
+                h / 2f - (advicePaint.ascent() + advicePaint.descent()) / 2f, advicePaint)
+            return
+        }
         val tileWidth = width / max(1, items.size).toFloat()
         items.forEachIndexed { index, item ->
             val cx = tileWidth * (index + .5f)
