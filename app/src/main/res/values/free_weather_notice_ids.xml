@@ -1,0 +1,5 @@
+<resources>
+    <item name="freeWeatherNoticePanel" type="id" />
+    <item name="freeWeatherNoticeConfigure" type="id" />
+    <item name="freeWeatherNoticeDismiss" type="id" />
+</resources>

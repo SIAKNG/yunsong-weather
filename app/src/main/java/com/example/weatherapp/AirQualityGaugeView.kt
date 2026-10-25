@@ -40,10 +40,6 @@ class AirQualityGaugeView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (BuildConfig.USER_CONFIGURABLE) {
-            drawSegmentedDial(canvas)
-            return
-        }
         val width = width.toFloat()
         val height = height.toFloat()
         // 限制直径，避免在宽屏上被拉成过宽的大仪表盘。
@@ -75,46 +71,9 @@ class AirQualityGaugeView @JvmOverloads constructor(
         textPaint.textSize = size * 0.225f
         textPaint.typeface = android.graphics.Typeface.DEFAULT_BOLD
         canvas.drawText(aqi?.toInt()?.toString() ?: "--", cx, cy - radius * 0.03f + dp(7f), textPaint)
-        textPaint.color = AirQualityScale.color(aqi)
+        textPaint.color = readableLevelColor
         textPaint.textSize = size * 0.080f
         canvas.drawText(AirQualityScale.level(aqi), cx, cy + radius * 0.23f + dp(6f), textPaint)
-    }
-
-    /** A full six-band half-dial, not the filled 270-degree gauge used by the reference app. */
-    private fun drawSegmentedDial(canvas: Canvas) {
-        val cx=width/2f
-        val radius=min(width*.40f,height*.68f)
-        val cy=height*.78f
-        val stroke=radius*.095f
-        val oval=RectF(cx-radius,cy-radius,cx+radius,cy+radius)
-        val edges=doubleArrayOf(0.0,50.0,100.0,150.0,200.0,300.0,500.0)
-        arcPaint.strokeWidth=stroke
-        arcPaint.style=Paint.Style.STROKE
-        for (index in 0 until edges.lastIndex) {
-            arcPaint.color=AirQualityScale.color((edges[index]+edges[index+1])/2)
-            val start=180f+(edges[index]/500.0*180).toFloat()+1.2f
-            val sweep=((edges[index+1]-edges[index])/500.0*180).toFloat()-2.4f
-            canvas.drawArc(oval,start,sweep,false,arcPaint)
-        }
-        aqi?.takeIf{it.isFinite()}?.let {value->
-            val angle=Math.toRadians(180.0+value.coerceIn(0.0,500.0)/500*180)
-            val x=cx+kotlin.math.cos(angle).toFloat()*radius
-            val y=cy+kotlin.math.sin(angle).toFloat()*radius
-            arcPaint.style=Paint.Style.FILL
-            arcPaint.color=if(darkTheme) Color.WHITE else Color.rgb(24,32,42)
-            canvas.drawCircle(x,y,stroke*.88f,arcPaint)
-            arcPaint.color=AirQualityScale.color(value)
-            canvas.drawCircle(x,y,stroke*.58f,arcPaint)
-        }
-        textPaint.textAlign=Paint.Align.CENTER
-        textPaint.typeface=android.graphics.Typeface.DEFAULT_BOLD
-        textPaint.color=if(darkTheme) Color.WHITE else Color.rgb(20,24,24)
-        textPaint.textSize=radius*.49f
-        canvas.drawText(aqi?.toInt()?.toString() ?: "--",cx,cy-radius*.20f,textPaint)
-        textPaint.color=readableLevelColor
-        textPaint.textSize=radius*.18f
-        canvas.drawText(AirQualityScale.level(aqi),cx,cy+radius*.10f,textPaint)
-        arcPaint.style=Paint.Style.STROKE
     }
 
     private fun dp(value: Float): Float = value * resources.displayMetrics.density

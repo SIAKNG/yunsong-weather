@@ -44,4 +44,18 @@ internal object IndicatorTrackGeometry {
      */
     fun feelsLikeProgress(delta: Double, range: Double): Float =
         (0.5f + (delta / range / 2.0).toFloat()).coerceIn(0f, 1f)
+
+    /** Nonzero deltas always reach a filled segment beyond the fixed central gap. */
+    fun feelsLikeMarkerX(
+        left: Float, right: Float, centerGap: Float, markerRadius: Float,
+        minimumFill: Float, delta: Double, range: Double
+    ): Float {
+        val center = (left + right) / 2f
+        if (!delta.isFinite() || delta == 0.0 || !range.isFinite() || range <= 0.0) return center
+        val half = ((right - left) / 2f).coerceAtLeast(0f)
+        val available = (half - markerRadius).coerceAtLeast(0f)
+        val distance = maxOf((half * (kotlin.math.abs(delta) / range)).toFloat(),
+            centerGap + maxOf(minimumFill, markerRadius)).coerceAtMost(available)
+        return center + if (delta > 0.0) distance else -distance
+    }
 }

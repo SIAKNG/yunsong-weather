@@ -43,8 +43,6 @@ class FeelsLikeDeltaView @JvmOverloads constructor(
     private var actual: Double? = null
     private var feelsLike: Double? = null
     private var fahrenheit = false
-    private var targetProgress = .5f
-    private var shownProgress = .5f
 
     fun setTemperatures(actual: Double?, feelsLike: Double?, unitText: String) {
         val isFahrenheit = unitText.endsWith("°F")
@@ -52,11 +50,7 @@ class FeelsLikeDeltaView @JvmOverloads constructor(
         this.actual = actual
         this.feelsLike = feelsLike
         fahrenheit = isFahrenheit
-        targetProgress = displayedDelta()?.let { delta ->
-            IndicatorTrackGeometry.feelsLikeProgress(delta, if (fahrenheit) 10.8 else 6.0)
-        } ?: .5f
         // 体感温差条不参与首页非线性入场动画，数据更新后立即落到真实位置。
-        shownProgress = targetProgress
         invalidate()
     }
 
@@ -78,7 +72,9 @@ class FeelsLikeDeltaView @JvmOverloads constructor(
 
         val delta = displayedDelta()
         if (delta != null) {
-            val markerX = left + (right - left) * shownProgress.coerceIn(0f, 1f)
+            val markerX = IndicatorTrackGeometry.feelsLikeMarkerX(
+                left, right, centerGap, dp(5f), lineWidth, delta, if (fahrenheit) 10.8 else 6.0
+            )
             if (abs(markerX - centerX) >= .5f) {
                 val warm = markerX > centerX
                 val nearColor = if (warm) Color.rgb(255, 204, 0) else Color.rgb(90, 200, 250)

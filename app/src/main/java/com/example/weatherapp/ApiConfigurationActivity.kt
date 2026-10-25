@@ -26,6 +26,7 @@ class ApiConfigurationActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (!BuildConfig.USER_CONFIGURABLE) { finish(); return }
+        if (savedInstanceState == null) FreeWeatherNotice.configurationOpened(this)
         val dark=WeatherSettings.isDarkTheme(this)
         val bars=if(dark) androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
             else androidx.activity.SystemBarStyle.light(android.graphics.Color.TRANSPARENT,android.graphics.Color.TRANSPARENT)

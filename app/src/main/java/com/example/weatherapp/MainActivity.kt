@@ -97,6 +97,8 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
     private var entryRefreshGeneration = 0
     private lateinit var permissionCoordinator: WeatherPermissionCoordinator
     private var initialPermissionFlowStarted = false
+    private var initialPermissionFlowCompleted = false
+    private val freeWeatherNotice by lazy { FreeWeatherNotice(this) }
     private val firstApiConfiguration = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         requestInitialPermissions()
     }
@@ -104,6 +106,7 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        freeWeatherNotice.restore(savedInstanceState)
         // Debug 真机验收可由启动参数临时强制白天多云外观；不写入用户设置。
         WeatherAppearancePreview.configure(intent)
         permissionCoordinator = WeatherPermissionCoordinator(this)
@@ -217,6 +220,8 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
             if (locationGranted) getLocation()
             else if (cityPages.isEmpty()) addCity(CityPage("北京", 116.407, 39.904, isCurrentLocation = false))
             WeatherBackgroundScheduler.schedule(this)
+            initialPermissionFlowCompleted = true
+            pager.post { freeWeatherNotice.maybeShow() }
         }
     }
 
@@ -228,6 +233,7 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
     override fun onResume() {
         super.onResume()
         permissionCoordinator.onResume()
+        if (initialPermissionFlowCompleted) pager.post { freeWeatherNotice.maybeShow() }
         // 回前台时按当前天气背景校正，不再跟随应用深浅色模式。
         applySystemStatusBarStyle()
         val session = WeatherForegroundSession.current
@@ -248,6 +254,16 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
             lastEntryRefreshAt = now
             refreshAllCitiesOnEntry()
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        freeWeatherNotice.save(outState)
+        super.onSaveInstanceState(outState)
+    }
+
+    override fun onDestroy() {
+        freeWeatherNotice.dispose()
+        super.onDestroy()
     }
 
     override fun onStop() {
