@@ -9,6 +9,8 @@ import android.graphics.Path
 import android.graphics.Typeface
 import android.util.AttributeSet
 import android.view.View
+import android.view.MotionEvent
+import android.view.ViewConfiguration
 
 // 多日预报的"折线"模式（参考图片 2 的样式）：
 // 顶部星期 + 日期，下面天气描述/图标/降水概率，
@@ -28,6 +30,50 @@ class DailyTrendView @JvmOverloads constructor(
     private var lows: List<Int?> = emptyList()
     private var showCount = 7
     private var pastCount = 0
+    var onDayClick: ((Int) -> Unit)? = null
+    private var pressedColumn = -1
+    private var downX = 0f
+    private var downY = 0f
+    private var dragging = false
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    private val pressedShade = Paint(Paint.ANTI_ALIAS_FLAG).apply {color=Color.argb(52,0,0,0)}
+    private val clearPressed = Runnable {pressedColumn=-1;isPressed=false;invalidate()}
+
+    init {isClickable=true;isFocusable=true}
+
+    internal fun columnAt(x: Float): Int? = DailyForecastDetailPolicy.columnAt(x,width.toFloat(),dp(32f),minOf(showCount,dayLabels.size))
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        when(event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                removeCallbacks(clearPressed)
+                downX=event.x;downY=event.y;dragging=false
+                pressedColumn=columnAt(event.x) ?: -1;isPressed=pressedColumn>=0;invalidate()
+                return pressedColumn>=0
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if(kotlin.math.abs(event.x-downX)>touchSlop || kotlin.math.abs(event.y-downY)>touchSlop) {
+                    dragging=true;clearPressed.run()
+                }
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                val tap=kotlin.math.abs(event.x-downX)<=touchSlop && kotlin.math.abs(event.y-downY)<=touchSlop
+                if(!dragging && tap && pressedColumn>=0 && event.y in 0f..height.toFloat()) performClick()
+                postDelayed(clearPressed,160)
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {clearPressed.run();return true}
+        }
+        return super.onTouchEvent(event)
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        val index=pressedColumn.takeIf {it>=0} ?: pastCount.coerceAtMost(dayLabels.lastIndex)
+        if(index>=0) onDayClick?.invoke(index)
+        return true
+    }
 
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
@@ -102,6 +148,7 @@ class DailyTrendView @JvmOverloads constructor(
         this.highs = highs
         this.lows = lows
         this.pastCount = pastCount.coerceIn(0, dayLabels.size)
+        clearPressed.run()
         invalidate()
         requestLayout()
     }
@@ -129,6 +176,10 @@ class DailyTrendView @JvmOverloads constructor(
         super.onDraw(canvas)
         val n = showCount
         if (n < 2) return
+        if(pressedColumn in 0 until n) {
+            val bounds=DailyForecastDetailPolicy.columnBounds(pressedColumn,width.toFloat(),dp(32f),n)
+            canvas.drawRoundRect(bounds.first,0f,bounds.second,height.toFloat(),dp(8f),dp(8f),pressedShade)
+        }
 
         // 参照 24 小时卡片：左右各留 32dp，保证首尾列的宽文字/图标
         // 在滑动到两端时也不会被卡片边缘裁断

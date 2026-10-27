@@ -41,339 +41,156 @@ import kotlin.math.roundToInt
  * 中央指示线属于视口而非时间轴，因此横滑时只移动数据，不移动选择线。
  */
 class ForecastDetailActivity : AppCompatActivity() {
-    override fun onPostCreate(savedInstanceState: Bundle?) {
-        super.onPostCreate(savedInstanceState)
-        DetailCardEdges.apply(findViewById(android.R.id.content))
-    }
-    private fun dp(v: Int) = (v * resources.displayMetrics.density).roundToInt()
-    private fun text(value: String, size: Float, secondary: Boolean = false) = TextView(this).apply {
-        text = value
-        textSize = size
-        setTextColor(ContextCompat.getColor(this@ForecastDetailActivity,
-            if (secondary) R.color.text_secondary else R.color.text_primary))
+    private lateinit var pager: androidx.viewpager2.widget.ViewPager2
+    private lateinit var days: List<ForecastDayPage>
+    private lateinit var dateStrip: HorizontalScrollView
+    private lateinit var selection: ForecastDateSelectionOverlay
+    private val chips=ArrayList<TextView>()
+    private val pages=HashMap<String,ForecastWeatherPage>()
+    private val scrollPositions=HashMap<String,Int>()
+    private var selectedIndex=0
+    private var datePosition=0f
+    private fun dp(v: Int)=(v*resources.displayMetrics.density).roundToInt()
+    private fun label(value: String,size: Float,secondary: Boolean=false)=TextView(this).apply {
+        text=value;textSize=size;setTextColor(ContextCompat.getColor(this@ForecastDetailActivity,if(secondary) R.color.text_secondary else R.color.text_primary))
+        gravity=Gravity.CENTER;includeFontPadding=false
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val dark = WeatherSettings.isDarkTheme(this)
-        val selectionPalette = ForecastSelectionPalette(
-            accent = ContextCompat.getColor(this, R.color.accent),
-            foreground = ContextCompat.getColor(this, R.color.text_primary),
-            isDark = dark,
-            lightSurface = ContextCompat.getColor(this, R.color.light_card_surface)
-        )
-        val bar = if (dark) SystemBarStyle.dark(Color.TRANSPARENT)
-        else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
-        enableEdgeToEdge(statusBarStyle = bar, navigationBarStyle = bar)
-        if (android.os.Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
-
+        val dark=WeatherSettings.isDarkTheme(this)
+        val bars=if(dark) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT,Color.TRANSPARENT)
+        enableEdgeToEdge(statusBarStyle=bars,navigationBarStyle=bars)
+        if(android.os.Build.VERSION.SDK_INT>=29) window.isNavigationBarContrastEnforced=false
         @Suppress("DEPRECATION")
-        val rows = (intent.getSerializableExtra("hours") as? ArrayList<ForecastHour>).orEmpty()
-        val dayKey = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA)
-        val futureIndices = rows.indices.filter { !rows[it].isHistorical }.ifEmpty { rows.indices.toList() }
-        // 日期键会在横滑的每一帧读取；预先格式化，避免 360 小时时间轴反复创建 Date / String。
-        val rowDateKeys = rows.map { dayKey.format(Date(it.time)) }
-        val days = futureIndices.distinctBy { rowDateKeys[it] }
-        val forecastHours = futureIndices.takeIf { it.isNotEmpty() }?.let { indices ->
-            (rows[indices.last()].time - rows[indices.first()].time + ForecastDetailData.HOUR)
-                .coerceAtLeast(ForecastDetailData.HOUR)
-        } ?: 0L
-        // 以连续预报时长计算“未来 N 日”，避免傍晚起报的 360 小时跨越 16 个日历日期时
-        // 被误写成“未来16日”。顶部日期条仍按真实日历日期分段。
-        val forecastDays = if (forecastHours == 0L) 0 else
-            kotlin.math.ceil(forecastHours.toDouble() / (24 * ForecastDetailData.HOUR)).toInt()
-        val forecastTitle = if (forecastDays == 0) "未来天气详情" else "未来${forecastDays}日天气详情"
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(ContextCompat.getColor(this@ForecastDetailActivity, R.color.page_bg))
-        }
+        val hours=(intent.getSerializableExtra("hours") as? ArrayList<ForecastHour>).orEmpty()
+        @Suppress("DEPRECATION")
+        val daily=(intent.getSerializableExtra("daily_snapshots") as? ArrayList<ForecastDaySnapshot>).orEmpty()
+        days=DailyForecastDetailPolicy.pages(hours,daily)
+        selectedIndex=DailyForecastDetailPolicy.initialIndex(days,savedInstanceState?.getString("selected_day") ?: intent.getStringExtra("selected_day"))
+        days.forEach {day ->savedInstanceState?.getInt("scroll:${day.date}")?.let {scrollPositions[day.date]=it}}
+        val root=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setBackgroundColor(ContextCompat.getColor(this@ForecastDetailActivity,R.color.page_bg))}
         setContentView(root)
-        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
-            val b = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            v.setPadding(b.left, b.top, b.right, b.bottom)
-            insets
+        ViewCompat.setOnApplyWindowInsetsListener(root) {v,i ->
+            val b=i.getInsets(WindowInsetsCompat.Type.systemBars());v.setPadding(b.left,b.top,b.right,b.bottom);i
         }
-
-        val titleBar = LinearLayout(this).apply {
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(7), dp(12), dp(5))
+        val header=LinearLayout(this).apply {gravity=Gravity.CENTER_VERTICAL;setPadding(dp(12),dp(7),dp(12),dp(5))}
+        header.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_back_arrow);setColorFilter(ContextCompat.getColor(this@ForecastDetailActivity,R.color.text_primary))
+            setPadding(dp(10),dp(10),dp(10),dp(10));contentDescription="返回";setOnClickListener {finish()}
+        },LinearLayout.LayoutParams(dp(44),dp(44)))
+        val today=DailyForecastDetailPolicy.dateKey(System.currentTimeMillis())
+        val futureDays=days.count {it.date>=today}
+        header.addView(LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            addView(label("",18f).apply {
+                tag="daily_detail_location";WeatherAddressFormatter.bind(this,intent.getStringExtra("city").orEmpty());typeface=Typeface.DEFAULT_BOLD
+            },LinearLayout.LayoutParams(-1,-2))
+            addView(label(if(futureDays>0) "未来${futureDays}日天气详情" else "多日天气详情",14f,true),LinearLayout.LayoutParams(-1,-2))
+        },LinearLayout.LayoutParams(0,-2,1f))
+        header.addView(View(this),LinearLayout.LayoutParams(dp(44),1));root.addView(header)
+        if(days.isEmpty()) {
+            root.addView(label("暂无多日预报数据，请返回主页刷新后重试。",14f,true));return
         }
-        titleBar.addView(ImageView(this).apply {
-            setImageResource(R.drawable.ic_back_arrow)
-            setColorFilter(ContextCompat.getColor(this@ForecastDetailActivity, R.color.text_primary))
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            contentDescription = "返回"
-            setOnClickListener { finish() }
-        }, LinearLayout.LayoutParams(dp(44), dp(44)))
-        titleBar.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            addView(text(intent.getStringExtra("city").orEmpty(), 18f).apply {
-                WeatherAddressFormatter.bind(this, intent.getStringExtra("city").orEmpty())
-                typeface = Typeface.DEFAULT_BOLD
-                gravity = Gravity.CENTER
-                textAlignment = View.TEXT_ALIGNMENT_CENTER
-            }, LinearLayout.LayoutParams(-1, -2))
-            addView(text(forecastTitle, 14f, true).apply {
-                gravity = Gravity.CENTER
-                textAlignment = View.TEXT_ALIGNMENT_CENTER
-            }, LinearLayout.LayoutParams(-1, -2))
-        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        titleBar.addView(View(this), LinearLayout.LayoutParams(dp(44), 1))
-        root.addView(titleBar)
-
-        if (rows.isEmpty()) {
-            root.addView(text("暂未获得小时预报，请返回主页刷新后重试。", 14f, true).apply {
-                setPadding(dp(24), dp(32), dp(24), 0)
+        val dateHost=FrameLayout(this)
+        val palette=ForecastSelectionPalette(ContextCompat.getColor(this,R.color.accent),ContextCompat.getColor(this,R.color.text_primary),dark,ContextCompat.getColor(this,R.color.light_card_surface))
+        selection=ForecastDateSelectionOverlay(this,palette)
+        dateHost.addView(selection,FrameLayout.LayoutParams(-1,-1))
+        dateStrip=HorizontalScrollView(this).apply {isHorizontalScrollBarEnabled=false;overScrollMode=View.OVER_SCROLL_NEVER;contentDescription="多日日期选择"}
+        val chipRow=LinearLayout(this).apply {gravity=Gravity.CENTER_VERTICAL;setPadding(0,dp(3),0,dp(3))}
+        dateStrip.addView(chipRow,FrameLayout.LayoutParams(-2,-1))
+        dateHost.addView(dateStrip,FrameLayout.LayoutParams(-1,-1))
+        root.addView(dateHost,LinearLayout.LayoutParams(-1,dp(54)).apply {setMargins(dp(20),0,dp(20),0)})
+        days.forEachIndexed {index,day ->
+            val date=SimpleDateFormat("yyyy-MM-dd",Locale.US).parse(day.date)!!
+            val chip=label(SimpleDateFormat("M/d\nEEE",Locale.CHINA).format(date),12f).apply {
+                tag="daily_date:${day.date}";contentDescription=SimpleDateFormat("yyyy年M月d日 EEEE",Locale.CHINA).format(date)
+                setPadding(dp(1),dp(5),dp(1),dp(5));isClickable=true;isFocusable=true
+                setOnClickListener {pager.setCurrentItem(index,true)}
+            }
+            chips.add(chip);chipRow.addView(chip,LinearLayout.LayoutParams(dp(48),-1))
+        }
+        pager=androidx.viewpager2.widget.ViewPager2(this).apply {
+            tag="daily_forecast_pager";offscreenPageLimit=1
+            (getChildAt(0) as? androidx.recyclerview.widget.RecyclerView)?.overScrollMode=View.OVER_SCROLL_NEVER
+        }
+        root.addView(pager,LinearLayout.LayoutParams(-1,0,1f))
+        val currentDate=days[DailyForecastDetailPolicy.initialIndex(days,null)].date
+        pager.adapter=object : androidx.recyclerview.widget.RecyclerView.Adapter<DayHolder>() {
+            override fun getItemCount()=days.size
+            override fun onCreateViewHolder(parent: android.view.ViewGroup,viewType: Int)=DayHolder(FrameLayout(parent.context).apply {
+                layoutParams=android.view.ViewGroup.LayoutParams(-1,-1)
             })
-            return
-        }
-
-        val fullFmt = SimpleDateFormat("yyyy年M月d日 EEEE", Locale.CHINA)
-
-        val dayStrip = HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
-            contentDescription = "未来七日日期选择"
-        }
-        // 日期条与下方圆角数据表共用 12dp 外边距。去掉原先额外的 6dp 内边距后，
-        // 首末日期的选中矩形会准确对齐数据表的左右边缘。
-        val chips = LinearLayout(this).apply {
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(3), 0, dp(3))
-        }
-        dayStrip.addView(chips, FrameLayout.LayoutParams(-2, -1))
-        // 顶部日期仅保留这一条可横向过渡的选中区域；白色无描边底框随当前时刻移动，
-        // 不再额外创建会跳变的日期/时间文字。
-        val dateStripHost = FrameLayout(this)
-        val dateSelectionOverlay = ForecastDateSelectionOverlay(this, selectionPalette)
-        // 选中框是文字的底板而非蒙版。先加入 FrameLayout，日期文字才能保持可见。
-        dateStripHost.addView(dateSelectionOverlay, FrameLayout.LayoutParams(-1, -1))
-        dateStripHost.addView(dayStrip, FrameLayout.LayoutParams(-1, -1))
-        root.addView(dateStripHost, LinearLayout.LayoutParams(-1, dp(54)).apply {
-            setMargins(dp(12), 0, dp(12), 0)
-        })
-
-        val tracks = ForecastTrack.available(rows)
-        // 图例独立置于日期与圆角数据表之间；每个项目等宽，确保六条指标在窄屏仍保持单行。
-        val legendRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), 0, dp(12), 0)
-        }
-        val legend = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.START or Gravity.CENTER_VERTICAL
-            contentDescription = "小时指标图例"
-        }
-        fun addLegendItem(label: String, colors: IntArray) {
-            val item = LinearLayout(this).apply { gravity = Gravity.CENTER }
-            item.addView(View(this).apply {
-                tag = "chart_legend_swatch"
-                background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, colors).apply {
-                    cornerRadius = dp(2).toFloat()
-                }
-            }, LinearLayout.LayoutParams(dp(10), dp(3)).apply { marginEnd = dp(2) })
-            item.addView(text(label, 9.5f, true).apply {
-                includeFontPadding = false
-                maxLines = 1
-            })
-            legend.addView(item, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
-        }
-        tracks.forEach { track ->
-            val combined = track.secondaryValue != null && rows.any { track.secondaryValue.invoke(it) != null }
-            addLegendItem(if (combined) "温度/体感" else track.title, ForecastChartGradient.forTrack(track.title))
-        }
-        legendRow.addView(legend, LinearLayout.LayoutParams(0, dp(28), 1f))
-        val returnCurrentButton = FrostedActionButton(this).apply {
-            text = "回到当前"
-            textSize = 10f
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            setTextColor(ContextCompat.getColor(this@ForecastDetailActivity, R.color.text_primary))
-        }
-        legendRow.addView(returnCurrentButton, LinearLayout.LayoutParams(dp(62), dp(24)).apply {
-            marginStart = dp(5)
-        })
-        root.addView(legendRow, LinearLayout.LayoutParams(-1, dp(30)).apply {
-            topMargin = dp(8)
-            bottomMargin = dp(8)
-        })
-
-        val panel = FrameLayout(this).apply {
-            background = GradientDrawable().apply {
-                setColor(ContextCompat.getColor(this@ForecastDetailActivity, R.color.metric_detail_panel))
-                cornerRadius = dp(18).toFloat()
+            override fun onBindViewHolder(holder: DayHolder,position: Int) {
+                holder.date?.let {pages.remove(it)}
+                val day=days[position]
+                holder.date=day.date;holder.host.removeAllViews()
+                val page=ForecastWeatherPage(this@ForecastDetailActivity,day.hours,day,
+                    intent.getDoubleExtra("current_temperature_celsius",Double.NaN).takeIf(Double::isFinite),
+                    scrollPositions[day.date] ?: 0,currentDate,
+                    onScrollPosition={scrollPositions[day.date]=it},onReturnToCurrent={
+                        scrollPositions[currentDate]=0
+                        pages[currentDate]?.resetToCurrent()
+                        pager.setCurrentItem(days.indexOfFirst {it.date==currentDate},true)
+                    })
+                pages[day.date]=page;holder.host.addView(page.view,FrameLayout.LayoutParams(-1,-1))
             }
-            clipToOutline = true
+            override fun onViewRecycled(holder: DayHolder) {holder.date?.let {pages.remove(it)};holder.host.removeAllViews()}
         }
-        root.addView(panel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f).apply {
-            setMargins(dp(12), 0, dp(12), dp(20))
+        pager.registerOnPageChangeCallback(object : androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
+            override fun onPageScrolled(position: Int,positionOffset: Float,positionOffsetPixels: Int) {datePosition=position+positionOffset;updateDates()}
+            override fun onPageSelected(position: Int) {
+                selectedIndex=position
+                chips.getOrNull(position)?.let {dateStrip.smoothScrollTo((it.left+it.width/2-dateStrip.width/2).coerceAtLeast(0),0)}
+            }
         })
-
-        val horizontal = HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
-            clipToPadding = false
-        }
-        panel.addView(horizontal, FrameLayout.LayoutParams(-1, -1))
-        val chart = ForecastHoursView(this, rows, tracks, selectionPalette)
-        horizontal.addView(chart, android.view.ViewGroup.LayoutParams(chart.totalWidth, -1))
-        val selectionOverlay = ForecastSelectionOverlay(this, selectionPalette)
-        panel.addView(selectionOverlay, FrameLayout.LayoutParams(-1, -1))
-        val currentIndex = rows.indexOfFirst { !it.isHistorical }.takeIf { it >= 0 } ?: 0
-        var returnCurrentState: Boolean? = null
-        fun updateReturnCurrentButton(atCurrent: Boolean) {
-            if (returnCurrentState == atCurrent) return
-            returnCurrentState = atCurrent
-            DetailReturnCurrentButtonStyle.apply(
-                button = returnCurrentButton,
-                atCurrent = atCurrent,
-                primary = ContextCompat.getColor(this, R.color.text_primary),
-                secondary = ContextCompat.getColor(this, R.color.text_secondary),
-                activeFill = selectionPalette.dateFill,
-                density = resources.displayMetrics.density
-            )
-        }
-        returnCurrentButton.setOnClickListener {
-            horizontal.smoothScrollTo(0, 0)
-        }
-        updateReturnCurrentButton(atCurrent = true)
-
-        val buttons = days.map { index ->
-            text(SimpleDateFormat("M/d\nEEE", Locale.CHINA).format(Date(rows[index].time)), 12f).apply {
-                gravity = Gravity.CENTER
-                includeFontPadding = false
-                setPadding(dp(2), dp(6), dp(2), dp(6))
-                contentDescription = fullFmt.format(Date(rows[index].time))
-                chips.addView(this, LinearLayout.LayoutParams(dp(48), LinearLayout.LayoutParams.WRAP_CONTENT))
-                setOnClickListener {
-                    val target = chart.scrollForIndex(index, panel.width)
-                    horizontal.smoothScrollTo(target.coerceIn(0, chart.maxScrollFor(horizontal.width)), 0)
-                }
+        dateStrip.setOnScrollChangeListener {_,_,_,_,_ ->updateDates()}
+        dateHost.addOnLayoutChangeListener {_,l,_,r,_,ol,_,or,_->
+            if(r-l!=or-ol && r>l) {
+                chips.forEach {it.layoutParams=it.layoutParams.apply {width=(r-l)/7}}
+                dateHost.post {updateDates()}
             }
         }
-        val buttonIndexByDate = days.mapIndexed { buttonIndex, rowIndex ->
-            rowDateKeys[rowIndex] to buttonIndex
-        }.toMap()
-        val dateTextColor = ContextCompat.getColor(this, R.color.text_primary)
-        // 仅在焦点权重实际变化时改 View 属性，避免横滑每一帧重绘所有未选日期。
-        val previousDateEmphasis = FloatArray(buttons.size) { Float.NaN }
-
-        var selectedKey = ""
-        var lastContentX = 0
-        var overlayLeftButton: TextView? = null
-        var overlayRightButton: TextView? = null
-        var overlayFraction = 0f
-
-        /**
-         * 日期条因自动居中而滚动时，只需重算选中框相对于视口的位置。旧版在这里再次
-         * 计算全部曲线交点，导致一次横滑同时触发两套完整图表计算而产生掉帧。
-         */
-        fun updateDateSelectionOverlay() {
-            val leftButton = overlayLeftButton ?: return
-            val rightButton = overlayRightButton ?: leftButton
-            if (leftButton.width == 0 || leftButton.height == 0) return
-            fun lerp(start: Float, end: Float) = start + (end - start) * overlayFraction
-            val leftCenter = leftButton.left + leftButton.width / 2f - dayStrip.scrollX
-            val rightCenter = rightButton.left + rightButton.width / 2f - dayStrip.scrollX
-            dateSelectionOverlay.update(
-                centerX = lerp(leftCenter, rightCenter),
-                top = lerp(leftButton.top.toFloat(), rightButton.top.toFloat()),
-                width = lerp(leftButton.width.toFloat(), rightButton.width.toFloat()),
-                height = lerp(leftButton.height.toFloat(), rightButton.height.toFloat())
-            )
+        pager.setCurrentItem(selectedIndex,false)
+        datePosition=selectedIndex.toFloat()
+        dateHost.post {
+            chips.getOrNull(selectedIndex)?.let {dateStrip.scrollTo((it.left+it.width/2-dateStrip.width/2).coerceAtLeast(0),0)}
+            updateDates()
         }
-
-        fun updateTopDateSelection(contentX: Int) {
-            lastContentX = contentX
-            if (buttons.isEmpty()) return
-            val position = chart.selectionPositionAtContent(contentX)
-            val leftDate = rowDateKeys[position.leftIndex]
-            val rightDate = rowDateKeys[position.rightIndex]
-            val leftButtonIndex = buttonIndexByDate[leftDate] ?: 0
-            val rightButtonIndex = buttonIndexByDate[rightDate] ?: leftButtonIndex
-            val leftButton = buttons.getOrNull(leftButtonIndex) ?: return
-            val rightButton = buttons.getOrNull(rightButtonIndex) ?: leftButton
-            if (leftButton.width == 0 || leftButton.height == 0) return
-            val fraction = if (leftButton === rightButton) 0f else position.fraction
-            overlayLeftButton = leftButton
-            overlayRightButton = rightButton
-            overlayFraction = fraction
-            buttons.forEachIndexed { buttonIndex, button ->
-                val rawFocus = when {
-                    leftButtonIndex == rightButtonIndex && buttonIndex == leftButtonIndex -> 1f
-                    buttonIndex == leftButtonIndex -> 1f - fraction
-                    buttonIndex == rightButtonIndex -> fraction
-                    else -> 0f
-                }
-                val focus = rawFocus * rawFocus * (3f - 2f * rawFocus)
-                if (abs(previousDateEmphasis[buttonIndex] - focus) < 0.002f) return@forEachIndexed
-                previousDateEmphasis[buttonIndex] = focus
-                // 不移动文字的基线，只在进入白色选中底框时连续放大；选中时使用粗字，
-                // 深色主题则同步反转为深色文字，保证白底上的阅读对比。
-                button.scaleX = 1f + 0.15f * focus
-                button.scaleY = 1f + 0.15f * focus
-                button.typeface = if (focus >= 0.5f) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-                button.setTextColor(selectionPalette.dateText(dateTextColor, focus))
-            }
-            updateDateSelectionOverlay()
-        }
-
-        fun updateSelectionNow(x: Int) {
-            val lineX = chart.selectionViewportX(x, panel.width)
-            val contentX = x + lineX.roundToInt()
-            val index = chart.indexAtContent(contentX).coerceIn(rows.indices)
-            updateReturnCurrentButton(atCurrent = index == currentIndex)
-            chart.setViewportContentBounds(x, panel.width)
-            chart.setSelectionContentX(contentX)
-            selectionOverlay.updateSelection(
-                lineX,
-                chart.selectionAt(contentX, panel.height)
-            )
-            updateTopDateSelection(contentX)
-            val key = rowDateKeys[index]
-            if (key == selectedKey) return
-            selectedKey = key
-            val button = buttons.getOrNull(buttonIndexByDate[key] ?: 0) ?: return
-            dayStrip.smoothScrollTo((button.left - dp(90)).coerceAtLeast(0), 0)
-        }
-
-        // ScrollView 在单个显示帧内可能发送多次位置回调。把状态更新合并为一次 vsync
-        // 回调仍能完全跟手，同时避免同帧重复分配曲线交点和重绘叠加层。
-        var pendingScrollX = 0
-        var selectionUpdatePosted = false
-        fun scheduleSelectionUpdate(x: Int) {
-            pendingScrollX = x
-            if (selectionUpdatePosted) return
-            selectionUpdatePosted = true
-            panel.postOnAnimation {
-                selectionUpdatePosted = false
-                updateSelectionNow(pendingScrollX)
-            }
-        }
-
-        horizontal.setOnScrollChangeListener { _, x, _, _, _ ->
-            // 裁剪窗口必须在 ScrollView 实际位移的同一帧更新；高亮交点仍合并到 vsync，
-            // 这样既不会出现边缘短暂空白，也不会恢复原来的主线程重复计算。
-            chart.setViewportContentBounds(x, panel.width)
-            scheduleSelectionUpdate(x)
-        }
-        dayStrip.setOnScrollChangeListener { _, _, _, _, _ -> updateDateSelectionOverlay() }
-        panel.post {
-            chart.setViewportWidth(panel.width)
-            horizontal.scrollTo(0, 0)
-            updateSelectionNow(0)
-        }
-        dateStripHost.post { updateTopDateSelection(lastContentX) }
-        updateSelectionNow(0)
     }
 
+    private fun updateDates() {
+        if(chips.isEmpty()) return
+        chips.forEachIndexed {index,chip ->
+            val emphasis=HourlyForecastDetailPolicy.selectionEmphasis(index-datePosition)
+            chip.textSize=12f+emphasis*2.4f
+            chip.typeface=if(emphasis>.5f) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+            chip.isSelected=index==selectedIndex
+        }
+        val left=floor(datePosition).toInt().coerceIn(chips.indices)
+        val right=(left+1).coerceAtMost(chips.lastIndex)
+        val fraction=(datePosition-left).coerceIn(0f,1f)
+        val a=chips[left];val b=chips[right]
+        selection.update(a.left+a.width/2f+(b.left+b.width/2f-a.left-a.width/2f)*fraction-dateStrip.scrollX,
+            a.top.toFloat(),a.width.toFloat(),a.height.toFloat())
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        days.getOrNull(selectedIndex)?.let {outState.putString("selected_day",it.date)}
+        scrollPositions.forEach {(date,x) ->outState.putInt("scroll:$date",x)}
+        super.onSaveInstanceState(outState)
+    }
+
+    private class DayHolder(val host: FrameLayout) : androidx.recyclerview.widget.RecyclerView.ViewHolder(host) {var date: String?=null}
+
     companion object {
-        fun createIntent(context: Context, city: String, rows: List<ForecastHour>) =
-            Intent(context, ForecastDetailActivity::class.java)
-                .putExtra("city", city)
-                .putExtra("hours", ArrayList(rows))
+        fun createIntent(context: Context,city: String,rows: List<ForecastHour>,selectedDate: String?=null,
+                         dailyForecast: List<DailyForecast> = emptyList(),currentTemperatureCelsius: Double?=null)=
+            Intent(context,ForecastDetailActivity::class.java).apply {
+                putExtra("city",city);putExtra("hours",ArrayList(rows));putExtra("selected_day",selectedDate)
+                putExtra("daily_snapshots",ArrayList(dailyForecast.map(ForecastDaySnapshot::from)))
+                currentTemperatureCelsius?.takeIf(Double::isFinite)?.let {putExtra("current_temperature_celsius",it)}
+            }
     }
 }
 

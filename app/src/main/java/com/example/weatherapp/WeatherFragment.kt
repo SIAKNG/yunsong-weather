@@ -90,6 +90,7 @@ class WeatherFragment : Fragment() {
     private lateinit var modeHighlight: View
     private lateinit var dailyMoreContainer: LinearLayout
     private val dailyRows = ArrayList<View>()
+    private var dailyDisplayedDates: List<String> = emptyList()
     private var expandedDaily = false
     private var dailyModeChart = false
     private var dailySource: List<DailyForecast>? = null
@@ -144,9 +145,10 @@ class WeatherFragment : Fragment() {
     private var hourlyMetricPoints: List<HourlyMetricPoint> = emptyList()
     private var forecastSkyByHour: Map<Long, String?> = emptyMap()
 
-    private fun openForecastDetail(card: View) {
+    private fun openForecastDetail(card: View, selectedDate: String? = null) {
         OplusViewSeamlessNavigator.startFromCard(this, card,
-            ForecastDetailActivity.createIntent(requireContext(), detailHeaderLocation(), forecastRowsForDetail()))
+            ForecastDetailActivity.createIntent(requireContext(), detailHeaderLocation(), forecastRowsForDetail(),
+                selectedDate, dailySource.orEmpty().filter {it.date.take(10) in dailyDisplayedDates}, lastTemp))
     }
 
     /** 首页 48 小时卡片专属入口；多日卡片仍使用既有 ForecastDetailActivity。 */
@@ -580,7 +582,7 @@ class WeatherFragment : Fragment() {
         // 横向拖动仍由其父容器处理，不会误触发详情页。
         hourlyChart.setOnClickListener { openHourlyForecastDetail(hourlyCard) }
         dailyCard.setOnClickListener { card -> openForecastDetail(card) }
-        dailyChart.setOnClickListener { openForecastDetail(dailyCard) }
+        dailyChart.onDayClick = { index -> dailyDisplayedDates.getOrNull(index)?.let { openForecastDetail(dailyCard, it) } }
 
         // 主页九宫格只作入口，使用与其余天气卡一致的卡片展开转场。
         view.findViewById<View>(R.id.lifeAdviceCard).setOnClickListener { card ->
@@ -3537,6 +3539,7 @@ class WeatherFragment : Fragment() {
     // 多日预报统一渲染：列表 + 折线图（最多 15 天）
     private fun renderDaily(input: List<DailyForecast>) {
         val list = input.filter { it.date.take(10) >= java.time.LocalDate.now().minusDays(1).toString() }
+        dailyDisplayedDates = list.map {it.date.take(10)}
         dailyRows.clear()
         dailyListContainer.removeAllViews()
 
@@ -3592,6 +3595,7 @@ class WeatherFragment : Fragment() {
                 buildDailyRow(
                     container = if (i < 7) dailyListContainer else dailyMoreContainer,
                     day = day,
+                    forecastDate = f?.date?.take(10),
                     date = dateText,
                     skycon = skyValue,
                     low = show(f?.low),
@@ -3661,6 +3665,7 @@ class WeatherFragment : Fragment() {
     private fun buildDailyRow(
         container: LinearLayout,
         day: String,
+        forecastDate: String?,
         date: String,
         skycon: String?,
         low: Int?,
@@ -3673,7 +3678,11 @@ class WeatherFragment : Fragment() {
         missing: Boolean
     ): View {
         val row = LinearLayout(requireContext())
-        row.setOnClickListener { openForecastDetail(dailyCard) }
+        row.background = android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(Color.argb(60,0,0,0)),null,
+            GradientDrawable().apply {setColor(Color.WHITE);cornerRadius=dp(8f).toFloat()})
+        row.contentDescription = "${forecastDate.orEmpty()} $day ${skycon?.let {WeatherText.skyconToText(it)}.orEmpty()}"
+        row.setOnClickListener { openForecastDetail(dailyCard, forecastDate) }
         row.orientation = LinearLayout.HORIZONTAL
         row.gravity = Gravity.CENTER_VERTICAL
         // 星期/日期缩小后行间距同步收窄
