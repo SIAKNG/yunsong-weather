@@ -13,8 +13,8 @@ android {
         applicationId = "com.example.weatherapp"
         minSdk = 24
         targetSdk = 37
-        versionCode = 7
-        versionName = "1.2"
+        versionCode = 8
+        versionName = "1.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "USER_CONFIGURABLE", "true")
         buildConfigField("boolean", "HAS_PRIVATE_ICON_ASSETS", (privateIconAssetsDir != null).toString())

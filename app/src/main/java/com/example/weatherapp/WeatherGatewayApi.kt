@@ -148,16 +148,17 @@ object WeatherDataRepository {
         lat: Double,
         span: Int,
         hourlySteps: Int,
+        onSupplement: ((GatewayResult<CaiyunResponse>) -> Unit)? = null,
         callback: (GatewayResult<CaiyunResponse>) -> Unit
     ) {
         if (WeatherSettings.useOpenMeteo(context)) {
             val sourceKey=WeatherSettings.sourceKey(context)
-            Thread {
-                val result=OpenMeteoSource.fetch(lat,lon)
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    callback(if(sourceKey==WeatherSettings.sourceKey(context)) result else GatewayResult(code=409,message="天气源已变更"))
-                }
-            }.start()
+            val handler=android.os.Handler(android.os.Looper.getMainLooper())
+            OpenMeteoSource.enqueue(lat,lon,{ result -> handler.post {
+                callback(if(sourceKey==WeatherSettings.sourceKey(context)) result else GatewayResult(code=409,message="天气源已变更"))
+            } },{ result -> handler.post {
+                if(sourceKey==WeatherSettings.sourceKey(context)) onSupplement?.invoke(result)
+            } })
             return
         }
         val token = embeddedCaiyunToken(context)

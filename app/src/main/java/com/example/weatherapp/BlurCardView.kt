@@ -375,11 +375,17 @@ open class BlurCardView @JvmOverloads constructor(
     private inner class GlassBackground : Drawable() {
         private var source: Bitmap? = null
         private var region: Rect? = null
+        private var sourceGeneration = 0L
+        private var softwareGeneration = -1L
+        private var softwareRadius = Float.NaN
+        private var softwareCrop: Bitmap? = null
+        private var softwareBlur: Bitmap? = null
 
         fun setSource(src: Bitmap?, srcRegion: Rect?) {
             if (source !== src || region !== srcRegion) {
                 source = src
                 region = srcRegion
+                sourceGeneration++
                 invalidateSelf()
             }
         }
@@ -519,7 +525,30 @@ open class BlurCardView @JvmOverloads constructor(
                         canvas.restoreToCount(fadeLayer)
                     }
                 } else {
-                    canvas.drawBitmap(displaySrc, displayRegion, dstRect, bitmapPaint)
+                    // OEM/shared-element snapshots use a software Canvas. RenderEffect is not
+                    // available there: retain a real blurred frame instead of exposing the sharp source.
+                    if (useGpuBlur && tw > 0 && th > 0) {
+                        val scale = minOf(1f, 160f / maxOf(tw, th))
+                        val sw = (tw * scale).toInt().coerceAtLeast(1)
+                        val sh = (th * scale).toInt().coerceAtLeast(1)
+                        var crop = softwareCrop
+                        var blurred = softwareBlur
+                        if (crop == null || crop.width != sw || crop.height != sh || blurred == null) {
+                            crop = Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888)
+                            blurred = Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888)
+                            softwareCrop = crop; softwareBlur = blurred; softwareGeneration = -1
+                        }
+                        if (softwareGeneration != sourceGeneration || softwareRadius != blurRadius) {
+                            Canvas(crop).apply {
+                                drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+                                drawBitmap(displaySrc, displayRegion, Rect(0, 0, sw, sh), bitmapPaint)
+                            }
+                            val radius = (blurRadius * sw / b.width().coerceAtLeast(1)).toInt().coerceIn(1, 48)
+                            boxBlur(crop, blurred, radius)
+                            softwareGeneration = sourceGeneration; softwareRadius = blurRadius
+                        }
+                        canvas.drawBitmap(blurred, null, dstRect, bitmapPaint)
+                    } else canvas.drawBitmap(displaySrc, displayRegion, dstRect, bitmapPaint)
                 }
                 canvas.restoreToCount(sc)
             }

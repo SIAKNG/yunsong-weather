@@ -127,7 +127,9 @@ internal class ForecastWeatherPage(
     private val initialScrollX: Int = 0,
     private val currentDay: String = DailyForecastDetailPolicy.dateKey(System.currentTimeMillis()),
     private val onScrollPosition: ((Int)->Unit)? = null,
-    private val onReturnToCurrent: (()->Unit)? = null
+    private val onReturnToCurrent: (()->Unit)? = null,
+    private val initialMetric: String? = null,
+    private val onMetricChanged: ((String)->Unit)? = null
 ) : ContextWrapper(activity) {
     private fun dp(value: Int)=(value*resources.displayMetrics.density).roundToInt()
     private val palette=HourlyForecastDetailPalette.from(this,WeatherSettings.isDarkTheme(this))
@@ -139,6 +141,8 @@ internal class ForecastWeatherPage(
     private var returnCurrentState: Boolean?=null
     private var pendingScrollX=0
     private var selectionPosted=false
+    private var dailyPanel: DailyForecastMetricPanel? = null
+    val selectedMetric: String? get() = dailyPanel?.selectedMetric?.name
     private val periodLabel get()=if(day==null) "未来48小时" else "当日"
     val summaryMetrics=buildSummaryMetrics()
     val view=LinearLayout(this).apply {
@@ -147,7 +151,10 @@ internal class ForecastWeatherPage(
         addSummary(this);addChartSection(this)
     }
     init {DetailCardEdges.apply(view)}
-    fun resetToCurrent() {if(::hourlyScroll.isInitialized) hourlyScroll.smoothScrollTo(0,0)}
+    fun resetToCurrent() {
+        dailyPanel?.resetToCurrent()
+        if(::hourlyScroll.isInitialized) hourlyScroll.smoothScrollTo(0,0)
+    }
     private fun addSummary(parent: LinearLayout) {
         parent.addView(sectionTitle("信息摘要"))
         parent.addView(
@@ -395,6 +402,12 @@ internal class ForecastWeatherPage(
     }
 
     private fun addChartSection(parent: LinearLayout) {
+        if (day != null) {
+            dailyPanel=DailyForecastMetricPanel(this,day,currentDay,initialMetric,onMetricChanged,initialScrollX,onScrollPosition) {
+                onReturnToCurrent?.invoke() ?: resetToCurrent()
+            }.also { parent.addView(it,LinearLayout.LayoutParams(-1,0,1f).apply {topMargin=dp(8)}) }
+            return
+        }
         parent.addView(buildLegend(), LinearLayout.LayoutParams(-1, dp(32)).apply { topMargin = dp(8) })
         if(points.isEmpty()) {
             parent.addView(TextView(this).apply {

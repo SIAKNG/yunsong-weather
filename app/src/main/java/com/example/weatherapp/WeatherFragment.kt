@@ -147,7 +147,7 @@ class WeatherFragment : Fragment() {
 
     private fun openForecastDetail(card: View, selectedDate: String? = null) {
         OplusViewSeamlessNavigator.startFromCard(this, card,
-            ForecastDetailActivity.createIntent(requireContext(), detailHeaderLocation(), forecastRowsForDetail(),
+            ForecastDetailActivity.createIntent(requireContext(), detailHeaderLocation(), dailyForecastRowsForDetail(),
                 selectedDate, dailySource.orEmpty().filter {it.date.take(10) in dailyDisplayedDates}, lastTemp))
     }
 
@@ -204,6 +204,24 @@ class WeatherFragment : Fragment() {
             pastHours = 1
         )
     }
+    /** Daily pages keep yesterday and all of today; the 48-hour entry still keeps only one past hour. */
+    private fun dailyForecastRowsForDetail(): List<ForecastHour> {
+        val now = System.currentTimeMillis()
+        val metrics = MetricHistoryTimelineCache.load(requireContext(), page, "caiyun_v26")
+        val weather = CaiyunWeatherHistorySnapshotCache.load(requireContext(), page)?.hourly.orEmpty()
+        val historical = (metrics?.points.orEmpty() + yesterdayMetricPoints).associateBy { it.timeMillis / ForecastDetailData.HOUR }
+        val points = weather.map { row ->
+            (historical[row.timeMillis / ForecastDetailData.HOUR] ?: HourlyMetricPoint(row.timeMillis)).let { metric ->
+                metric.copy(temperature=metric.temperature ?: row.temperature, uv=metric.uv ?: row.uv,
+                    precipitationProbability=metric.precipitationProbability ?: row.precipitationProbability)
+            }
+        } + historical.values + hourlyMetricPoints
+        val rows = ForecastDetailData.build(points.associateBy { it.timeMillis / ForecastDetailData.HOUR }.values.toList(),
+            weather.associate { it.timeMillis / ForecastDetailData.HOUR to it.skycon } + forecastSkyByHour,
+            metrics?.airQualityPoints.orEmpty() + historicalAirQualityPoints + airQualityTimeline.pointsWithRealtime(), now, pastHours=48)
+        return ForecastDayHistoryPolicy.merge(ForecastDayHistoryCache.load(requireContext(),page), rows, now)
+    }
+
     private var yesterdayMetricPoints: List<HourlyMetricPoint> = emptyList()
     private var historicalSupplementedKinds: Set<MetricKind> = emptySet()
     private var metricFetchSeq = 0
@@ -1319,27 +1337,11 @@ class WeatherFragment : Fragment() {
             Bitmap.Config.ARGB_8888
         )
 
-        val hidden = ArrayList<Pair<View, Int>>()
-        hidden += topMask to topMask.visibility
-        hidden += topOverlayContent to topOverlayContent.visibility
-        topMask.visibility = View.INVISIBLE
-        topOverlayContent.visibility = View.INVISIBLE
-        for (overlay in overlayViews) {
-            hidden += overlay to overlay.visibility
-            overlay.visibility = View.INVISIBLE
-        }
-        val previousAlpha = pageLayer.alpha
-        pageLayer.alpha = 0f
-        try {
-            val canvas = Canvas(bitmap)
-            canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-            canvas.scale(SHOT_QUALITY, SHOT_QUALITY)
-            canvas.translate(-left.toFloat(), -top.toFloat())
-            root.draw(canvas)
-        } finally {
-            pageLayer.alpha = previousAlpha
-            hidden.forEach { (v, visibility) -> v.visibility = visibility }
-        }
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+        canvas.scale(SHOT_QUALITY, SHOT_QUALITY)
+        canvas.translate(-left.toFloat(), -top.toFloat())
+        WeatherBackgroundSnapshot.draw(root, canvas)
         dailyBlurFreeze = DailyBlurFreeze(bitmap, bitmap.width, bitmap.height)
         applyDailyCardBlurFreeze()
     }
@@ -1418,45 +1420,22 @@ class WeatherFragment : Fragment() {
                 }
             }
 
-            val savedAlphas = ArrayList<Pair<View, Float>>()
-            val savedVis = ArrayList<Pair<View, Int>>()
-            // 主页和预览页都必须排除蒙版本身及固定顶部层，避免预览页把上一帧
-            // 蒙版重新录入截图而形成自我采样，导致模糊/半透明效果与主页不一致。
-            savedVis.add(topMask to topMask.visibility)
-            topMask.visibility = View.INVISIBLE
-            savedVis.add(topOverlayContent to topOverlayContent.visibility)
-            topOverlayContent.visibility = View.INVISIBLE
-            for (v in overlayViews) {
-                savedVis.add(v to v.visibility)
-                v.visibility = View.INVISIBLE
-            }
-            // 普通卡片的源图直接从共同的天气背景取得。此前只逐一隐藏玻璃卡，
-            // 仍会把温度文字、其他卡片及其上一帧的玻璃内容录入，滚动时形成拖影。
-            val pageLayer = if (hideCards) view else null
-            if (pageLayer != null) {
-                savedAlphas.add(pageLayer to pageLayer.alpha)
-                pageLayer.alpha = 0f
-            } else if (hideCards) {
-                for (c in glassCards) {
-                    if (c === topMask) continue
-                    savedAlphas.add(c to c.alpha)
-                    c.alpha = 0f
-                }
-            } else {
-                for (c in cards) {
-                    if (c === topMask) continue
-                    savedVis.add(c to c.visibility)
-                    c.visibility = View.INVISIBLE
-                }
-            }
             val canvas = Canvas(bitmap)
-            // 画板会复用；根视图任一帧含透明区域时先清空，防止旧帧的白色残影混入实时蒙版。
             canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
             canvas.scale(SHOT_QUALITY, SHOT_QUALITY)
             canvas.translate(-minL.toFloat(), -minT.toFloat())
-            root.draw(canvas)
-            for ((v, a) in savedAlphas) v.alpha = a
-            for ((v, vis) in savedVis) v.visibility = vis
+            if (hideCards) {
+                WeatherBackgroundSnapshot.draw(root, canvas)
+            } else {
+                val excluded = (listOf(topMask, topOverlayContent) + overlayViews + cards).distinct()
+                val saved = excluded.map { it to it.visibility }
+                try {
+                    excluded.forEach { it.visibility = View.INVISIBLE }
+                    root.draw(canvas)
+                } finally {
+                    saved.forEach { (v, visibility) -> v.visibility = visibility }
+                }
+            }
 
             for (i in visible.indices) {
                 val r = regions[i]
@@ -1486,28 +1465,11 @@ class WeatherFragment : Fragment() {
             board = b
         }
 
-        val savedAlphas = ArrayList<Pair<View, Float>>()
-        val savedVis = ArrayList<Pair<View, Int>>()
-        savedVis.add(topMask to topMask.visibility)
-        topMask.visibility = View.INVISIBLE
-        savedVis.add(topOverlayContent to topOverlayContent.visibility)
-        topOverlayContent.visibility = View.INVISIBLE
-        for (v in overlayViews) {
-            savedVis.add(v to v.visibility)
-            v.visibility = View.INVISIBLE
-        }
-        for (c in glassCards) {
-            if (c === topMask) continue
-            savedAlphas.add(c to c.alpha)
-            c.alpha = 0f
-        }
         val canvas = Canvas(board)
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         canvas.scale(SHOT_QUALITY, SHOT_QUALITY)
         canvas.translate(-minL.toFloat(), -minT.toFloat())
-        root.draw(canvas)
-        for ((v, a) in savedAlphas) v.alpha = a
-        for ((v, vis) in savedVis) v.visibility = vis
+        WeatherBackgroundSnapshot.draw(root, canvas)
 
         // 每张卡片在截图里的区域（相对合并区域，按截图比例换算）
         for (i in visible.indices) {
@@ -1823,7 +1785,14 @@ class WeatherFragment : Fragment() {
         caiyunV26Astro = emptyList()
         caiyunLifeAdvice = emptyList()
         if (!WeatherSettings.useOpenMeteo(requireContext())) fetchCaiyunV26Astronomy(lng, lat, seq)
-        WeatherDataRepository.enqueueCaiyunWeather(requireContext(), lng, lat, 15, 360) { response ->
+        WeatherDataRepository.enqueueCaiyunWeather(requireContext(), lng, lat, 15, 360, onSupplement = { extra ->
+            if (isAdded && view != null && seq == fetchSeq && sourceKey == WeatherSettings.sourceKey(requireContext()) && WeatherSettings.useOpenMeteo(requireContext())) {
+                extra.body?.let { body ->
+                    WeatherCache.saveCaiyun(requireContext(),page,body)
+                    body.result?.let { result -> applyOpenMeteoAir(result) }
+                }
+            }
+        }) { response ->
                     if (!isAdded) {
                         completeDataLoad(fromRefresh, onComplete, false)
                         return@enqueueCaiyunWeather
@@ -2510,13 +2479,8 @@ class WeatherFragment : Fragment() {
         result.daily?.let { showDaily(it) }
         // 彩云详情图表使用同一份 result.hourly.air_quality；实时快照仅覆盖时间线的“现在”。
         val timeline=AirQualityTimelineFactory.caiyun(result,lastServerTimeMillis.takeIf {it>0} ?: System.currentTimeMillis())
-        if(WeatherSettings.useOpenMeteo(requireContext())) {
-            historicalAirQualityPoints=timeline.hourly.filter {it.timeMillis<currentHourMillis()}.map {it.copy(source=AirQualitySource.OPEN_METEO)}
-            applyAirQualityTimeline(timeline.copy(source=AirQualitySource.OPEN_METEO,
-                realtime=timeline.realtime?.copy(source=AirQualitySource.OPEN_METEO),
-                hourly=timeline.hourly.filter {it.timeMillis>=currentHourMillis()}.map {it.copy(source=AirQualitySource.OPEN_METEO)}))
-            tvAqiDesc.text="模型污染物参考估算，非监测站实测"
-        } else applyAirQualityTimeline(timeline)
+        if(WeatherSettings.useOpenMeteo(requireContext())) applyOpenMeteoAir(result)
+        else applyAirQualityTimeline(timeline)
         // 仅在至少有一类可展示天气数据时退出加载态；接口返回空对象时继续显示准确骨架。
         if (hasRenderableWeatherData()) finishInitialLoading()
         // 预警独立使用和风；彩云缓存及响应中的预警一律不进入界面。
@@ -2818,6 +2782,15 @@ class WeatherFragment : Fragment() {
     }
 
     /** 主页 AQI 卡片、污染物网格与二级页只读这一条带来源的时间线。 */
+    private fun applyOpenMeteoAir(result: Result) {
+        val timeline=AirQualityTimelineFactory.caiyun(result,lastServerTimeMillis.takeIf {it>0} ?: System.currentTimeMillis())
+        historicalAirQualityPoints=timeline.hourly.filter {it.timeMillis<currentHourMillis()}.map {it.copy(source=AirQualitySource.OPEN_METEO)}
+        applyAirQualityTimeline(timeline.copy(source=AirQualitySource.OPEN_METEO,
+            realtime=timeline.realtime?.copy(source=AirQualitySource.OPEN_METEO),
+            hourly=timeline.hourly.filter {it.timeMillis>=currentHourMillis()}.map {it.copy(source=AirQualitySource.OPEN_METEO)}))
+        tvAqiDesc.text="模型污染物参考估算，非监测站实测"
+    }
+
     private fun applyAirQualityTimeline(timeline: AirQualityTimeline) {
         airQualityTimeline = timeline
         airQualityPoints = timeline.pointsWithRealtime()
@@ -3009,6 +2982,7 @@ class WeatherFragment : Fragment() {
         ) { response ->
             if (!isAdded || request != metricHistoryFetchSeq || sourceKey!=WeatherSettings.sourceKey(requireContext())) return@enqueueCaiyunMetricHistory
             if (response.isSuccessful) {
+                response.body?.result?.let { ForecastDayHistoryCache.save(requireContext(),page,ForecastDayHistoryCache.fromCaiyun(it)) }
                 response.body?.result?.daily?.let(::applyYesterdayDailyHistory)
                 val history = metricHistoryFromCaiyun(response.body?.result)
                     .filter { it.timeMillis < currentHourMillis() }

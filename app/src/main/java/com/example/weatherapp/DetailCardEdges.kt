@@ -8,7 +8,7 @@ import android.view.ViewGroup
 internal object DetailCardEdges {
     fun apply(view: View) {
         val background = view.background as? GradientDrawable
-        if (view.tag != "chart_legend_swatch" && background != null && background.shape == GradientDrawable.RECTANGLE &&
+        if (view.tag != "chart_legend_swatch" && view.tag != "weather_segment_thumb" && view.tag != "daily_metric_capsule" && background != null && background.shape == GradientDrawable.RECTANGLE &&
             (background.cornerRadius > 0f || background.cornerRadii != null) && view !is FrostedActionButton) {
             val density = view.resources.displayMetrics.density
             val radius = background.cornerRadii?.firstOrNull() ?: background.cornerRadius

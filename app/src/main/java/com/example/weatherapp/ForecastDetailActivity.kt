@@ -48,6 +48,7 @@ class ForecastDetailActivity : AppCompatActivity() {
     private val chips=ArrayList<TextView>()
     private val pages=HashMap<String,ForecastWeatherPage>()
     private val scrollPositions=HashMap<String,Int>()
+    private val metricSelections=HashMap<String,String>()
     private var selectedIndex=0
     private var datePosition=0f
     private fun dp(v: Int)=(v*resources.displayMetrics.density).roundToInt()
@@ -69,6 +70,7 @@ class ForecastDetailActivity : AppCompatActivity() {
         days=DailyForecastDetailPolicy.pages(hours,daily)
         selectedIndex=DailyForecastDetailPolicy.initialIndex(days,savedInstanceState?.getString("selected_day") ?: intent.getStringExtra("selected_day"))
         days.forEach {day ->savedInstanceState?.getInt("scroll:${day.date}")?.let {scrollPositions[day.date]=it}}
+        days.forEach {day ->savedInstanceState?.getString("metric:${day.date}")?.let {metricSelections[day.date]=it}}
         val root=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setBackgroundColor(ContextCompat.getColor(this@ForecastDetailActivity,R.color.page_bg))}
         setContentView(root)
         ViewCompat.setOnApplyWindowInsetsListener(root) {v,i ->
@@ -127,12 +129,12 @@ class ForecastDetailActivity : AppCompatActivity() {
                 holder.date=day.date;holder.host.removeAllViews()
                 val page=ForecastWeatherPage(this@ForecastDetailActivity,day.hours,day,
                     intent.getDoubleExtra("current_temperature_celsius",Double.NaN).takeIf(Double::isFinite),
-                    scrollPositions[day.date] ?: 0,currentDate,
+                    scrollPositions[day.date] ?: -1,currentDate,
                     onScrollPosition={scrollPositions[day.date]=it},onReturnToCurrent={
-                        scrollPositions[currentDate]=0
+                        scrollPositions[currentDate]=-1
                         pages[currentDate]?.resetToCurrent()
                         pager.setCurrentItem(days.indexOfFirst {it.date==currentDate},true)
-                    })
+                    },initialMetric=metricSelections[day.date],onMetricChanged={metricSelections[day.date]=it})
                 pages[day.date]=page;holder.host.addView(page.view,FrameLayout.LayoutParams(-1,-1))
             }
             override fun onViewRecycled(holder: DayHolder) {holder.date?.let {pages.remove(it)};holder.host.removeAllViews()}
@@ -178,6 +180,7 @@ class ForecastDetailActivity : AppCompatActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         days.getOrNull(selectedIndex)?.let {outState.putString("selected_day",it.date)}
         scrollPositions.forEach {(date,x) ->outState.putInt("scroll:$date",x)}
+        metricSelections.forEach {(date,metric) ->outState.putString("metric:$date",metric)}
         super.onSaveInstanceState(outState)
     }
 

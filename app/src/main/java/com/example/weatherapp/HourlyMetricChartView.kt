@@ -39,6 +39,23 @@ class HourlyMetricChartView @JvmOverloads constructor(
     private var secondary = DoubleArray(0)
     private var selectedIndex = 0
     private var darkTheme = true
+    private var forecastMetric: DailyForecastMetric? = null
+    private val seriesColors get() = forecastMetric?.colors ?: kind.lineColors
+
+    internal fun setForecastSeries(metric: DailyForecastMetric, times: LongArray, values: DoubleArray, secondary: DoubleArray) {
+        setSeries(metric.kind, times, values, secondary)
+        forecastMetric = metric
+        dispatchSelection()
+        invalidate()
+    }
+
+    fun selectTime(time: Long) {
+        selectedIndex = times.indices.minByOrNull { abs(times[it] - time) } ?: 0
+        dispatchSelection()
+        invalidate()
+    }
+
+    internal fun forecastValueColor(value: Double): Int = colorAt(value, axisRange())
 
     private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.argb(42, 255, 255, 255)
@@ -99,6 +116,7 @@ class HourlyMetricChartView @JvmOverloads constructor(
         secondary: DoubleArray = DoubleArray(values.size) { Double.NaN }
     ) {
         this.kind = kind
+        forecastMetric = null
         this.times = times
         this.values = values
         this.secondary = secondary
@@ -134,21 +152,16 @@ class HourlyMetricChartView @JvmOverloads constructor(
         if (kind == MetricKind.WIND) {
             drawArea(
                 canvas, primaryRuns, bottom,
-                kind.lineColors,
+                seriesColors,
                 // 风力填充在浅色页也保持可辨识，但仍低于主曲线的视觉权重。
                 if (darkTheme) 112 else 142, top
             )
             drawRuns(canvas, secondaryRuns, secondaryPaint.apply { color = Color.rgb(190, 230, 255) })
         } else {
-            drawArea(canvas, primaryRuns, bottom, kind.lineColors, 92, top)
+            drawArea(canvas, primaryRuns, bottom, seriesColors, 92, top)
             if (secondaryRuns.isNotEmpty()) drawRuns(canvas, secondaryRuns, secondaryPaint)
         }
-        linePaint.shader = LinearGradient(
-            0f, bottom, 0f, top,
-            kind.lineColors,
-            null,
-            Shader.TileMode.CLAMP
-        )
+        linePaint.shader = seriesShader(top, bottom, 255)
         drawRuns(canvas, primaryRuns, linePaint)
         linePaint.shader = null
         drawSelection(canvas, left, right, top, bottom, xOf, yOf)
@@ -189,14 +202,7 @@ class HourlyMetricChartView @JvmOverloads constructor(
         top: Float
     ) {
         if (runs.isEmpty()) return
-        val colorGradient = LinearGradient(
-            0f, bottom, 0f, top,
-            colors.map { color ->
-                Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color))
-            }.toIntArray(),
-            null,
-            Shader.TileMode.CLAMP
-        )
+        val colorGradient = seriesShader(top, bottom, alpha)
         val fadeGradient = LinearGradient(
             0f, top, 0f, bottom,
             Color.WHITE, Color.TRANSPARENT, Shader.TileMode.CLAMP
@@ -211,6 +217,19 @@ class HourlyMetricChartView @JvmOverloads constructor(
             canvas.drawPath(area, fillPaint)
         }
         fillPaint.shader = null
+    }
+
+    private fun seriesShader(top: Float, bottom: Float, alpha: Int): Shader {
+        if (forecastMetric == DailyForecastMetric.AQI) {
+            val axis=axisRange()
+            val stops=(listOf(axis.minimum,axis.maximum)+listOf(50.0,100.0,150.0,200.0,300.0,500.0)
+                .filter {it>axis.minimum && it<axis.maximum}).sorted()
+            return LinearGradient(0f,bottom,0f,top,
+                stops.map { androidx.core.graphics.ColorUtils.setAlphaComponent(AirQualityScale.color(it),alpha) }.toIntArray(),
+                stops.map { ((it-axis.minimum)/axis.span).toFloat() }.toFloatArray(),Shader.TileMode.CLAMP)
+        }
+        return LinearGradient(0f,bottom,0f,top,
+            seriesColors.map {androidx.core.graphics.ColorUtils.setAlphaComponent(it,alpha)}.toIntArray(),null,Shader.TileMode.CLAMP)
     }
 
     private fun drawRuns(canvas: Canvas, runs: List<CurveRun>, paint: Paint) {
@@ -346,17 +365,21 @@ class HourlyMetricChartView @JvmOverloads constructor(
         return AxisRange(lower, upper)
     }
 
-    private fun axisText(value: Double): String =
-        WeatherSettings.metricAxisText(context, kind, value)
+    private fun axisText(value: Double): String = when(forecastMetric) {
+        DailyForecastMetric.RAIN -> "${String.format(Locale.US,"%.1f",value).removeSuffix(".0")}mm"
+        DailyForecastMetric.AQI -> value.roundToInt().toString()
+        else -> WeatherSettings.metricAxisText(context, kind, value)
+    }
 
     private fun colorAt(value: Double, axis: AxisRange): Int {
+        if(forecastMetric == DailyForecastMetric.AQI) return AirQualityScale.color(value)
         val fraction = ((value - axis.minimum) / axis.span).toFloat().coerceIn(0f, 1f)
-        val scaled = fraction * (kind.lineColors.size - 1)
-        val start = scaled.toInt().coerceIn(0, kind.lineColors.lastIndex)
-        val end = (start + 1).coerceAtMost(kind.lineColors.lastIndex)
+        val scaled = fraction * (seriesColors.size - 1)
+        val start = scaled.toInt().coerceIn(0, seriesColors.lastIndex)
+        val end = (start + 1).coerceAtMost(seriesColors.lastIndex)
         val local = scaled - start
-        val from = kind.lineColors[start]
-        val to = kind.lineColors[end]
+        val from = seriesColors[start]
+        val to = seriesColors[end]
         return Color.rgb(
             (Color.red(from) + (Color.red(to) - Color.red(from)) * local).roundToInt(),
             (Color.green(from) + (Color.green(to) - Color.green(from)) * local).roundToInt(),

@@ -72,9 +72,10 @@ class DailyForecastDetailDeviceTest {
             ActivityScenario.launch<ForecastDetailActivity>(ForecastDetailActivity.createIntent(context,"北京市",hours(),key(1),daily())).use {scenario ->
                 settle()
                 scenario.onActivity {a ->
-                    val scroll=page(a,key(1)).view.findViewWithTag<HorizontalScrollView>("forecast_hour_scroll")
-                    val labels=field<List<String>>(scroll.getChildAt(0),"windLabels")
-                    assertEquals(WeatherSettings.windSpeedValue(a,8.0,null).removeSuffix("m/s"),labels.first())
+                    val panel=page(a,key(1)).view.findViewWithTag<DailyForecastMetricPanel>("daily_metric_panel")
+                    panel.findViewWithTag<View>("daily_metric:WIND").performClick()
+                    assertEquals(8.0,field<DoubleArray>(panel.chart,"values").first(),0.0)
+                    assertTrue(panel.findViewWithTag<android.widget.TextView>("daily_metric_reading").text.contains("m/s"))
                 }
             }
         } finally {WeatherSettings.setWindUnit(context,original)}
@@ -131,7 +132,7 @@ class DailyForecastDetailDeviceTest {
                         val selected=page(a,key(9))
                         assertTrue(field<List<ForecastHour>>(selected,"points").isEmpty())
                         assertEquals(8.0,selected.summaryMetrics[0].minimumTemperatureCelsius!!,0.0)
-                        assertNotNull(selected.view.findViewWithTag<View>("forecast_empty_hours"))
+                        assertTrue(selected.view.findViewWithTag<android.widget.TextView>("daily_history_status").text.contains("未提供"))
                     }
                     scenario.recreate();settle()
                     scenario.onActivity {a ->
@@ -170,16 +171,13 @@ class DailyForecastDetailDeviceTest {
             };settle()
             scenario.onActivity {a ->pager(a).setCurrentItem(2,false)};settle()
             scenario.onActivity {a ->
-                val scroll=page(a,key(1)).view.findViewWithTag<HorizontalScrollView>("forecast_hour_scroll")
+                val chart=page(a,key(1)).view.findViewWithTag<HourlyMetricChartView>("daily_metric_chart")
                 val time=SystemClock.uptimeMillis()
-                touch(scroll,time,time,MotionEvent.ACTION_DOWN,scroll.width*.8f,scroll.height*.5f)
-                touch(scroll,time,time+60,MotionEvent.ACTION_MOVE,scroll.width*.7f,scroll.height*.5f)
-                touch(scroll,time,time+160,MotionEvent.ACTION_MOVE,scroll.width*.25f,scroll.height*.5f)
-                touch(scroll,time,time+250,MotionEvent.ACTION_UP,scroll.width*.25f,scroll.height*.5f)
-            };settle()
-            scenario.onActivity {a ->
+                touch(chart,time,time,MotionEvent.ACTION_DOWN,chart.width*.8f,chart.height*.5f)
+                touch(chart,time,time+100,MotionEvent.ACTION_MOVE,chart.width*.25f,chart.height*.5f)
+                touch(chart,time,time+200,MotionEvent.ACTION_UP,chart.width*.25f,chart.height*.5f)
                 assertEquals(2,pager(a).currentItem)
-                assertTrue(page(a,key(1)).view.findViewWithTag<HorizontalScrollView>("forecast_hour_scroll").scrollX>0)
+                assertTrue(field<Int>(chart,"selectedIndex") in 4..7)
             }
         }
     }

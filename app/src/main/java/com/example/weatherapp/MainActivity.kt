@@ -233,6 +233,7 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
     override fun onResume() {
         super.onResume()
         permissionCoordinator.onResume()
+        restoreWeatherDrawing()
         if (initialPermissionFlowCompleted) pager.post { freeWeatherNotice.maybeShow() }
         // 回前台时按当前天气背景校正，不再跟随应用深浅色模式。
         applySystemStatusBarStyle()
@@ -254,6 +255,26 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
             lastEntryRefreshAt = now
             refreshAllCitiesOnEntry()
         }
+    }
+
+    /** A stopped/recreated RecyclerView can retain an INVISIBLE offscreen transform until its next scroll. */
+    private fun restoreWeatherDrawing() {
+        if (!::pager.isInitialized) return
+        pager.post {
+            if (isFinishing || isDestroyed) return@post
+            pager.requestTransform()
+            pager.invalidate()
+            (pager.getChildAt(0) as? android.view.ViewGroup)?.let { recycler ->
+                repeat(recycler.childCount) { index ->
+                    recycler.getChildAt(index).invalidate()
+                }
+            }
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) restoreWeatherDrawing()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

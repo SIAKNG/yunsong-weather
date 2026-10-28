@@ -12,6 +12,25 @@ import java.util.concurrent.TimeUnit
 
 /** Credential-free source. Coordinates rounded to city-scale precision; no device/account headers. */
 object OpenMeteoSource {
+    private val loader = ProgressiveWeatherLoader({ url, callback ->
+        client.newCall(request(url)).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) { callback(null) }
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                callback(runCatching {response.use {read(it)}}.getOrNull())
+            }
+        })
+    })
+
+    fun enqueue(lat: Double, lng: Double, primary: (GatewayResult<CaiyunResponse>)->Unit,
+                supplement: (GatewayResult<CaiyunResponse>)->Unit) {
+        val weatherUrl=weatherUrl(lat,lng)
+        loader.load(weatherUrl,weatherUrl,airUrl(lat,lng),{weather,air ->
+            primary(runCatching {GatewayResult(parse(requireNotNull(weather),air),200)}
+                .getOrElse {GatewayResult(code=0,message="Open-Meteo 暂不可用，请稍后重试")})
+        },{weather,air ->
+            runCatching {GatewayResult(parse(weather,air),200)}.getOrNull()?.let(supplement)
+        })
+    }
     private val china = ZoneOffset.ofHours(8)
     private val date = DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(china)
     private val clock = DateTimeFormatter.ofPattern("HH:mm").withZone(china)
@@ -43,8 +62,12 @@ object OpenMeteoSource {
         GatewayResult(parse(weather,air),200)
     } catch (_: Exception) { GatewayResult(code=0,message="Open-Meteo 暂不可用，请稍后重试") }
 
-    private fun get(url: String): String = client.newCall(Request.Builder().url(url)
-        .header("User-Agent","YunsongWeather/" + BuildConfig.VERSION_NAME).build()).execute().use { r ->
+    private fun request(url: String) = Request.Builder().url(url)
+        .header("User-Agent","YunsongWeather/" + BuildConfig.VERSION_NAME).build()
+
+    private fun get(url: String): String = client.newCall(request(url)).execute().use(::read)
+
+    private fun read(r: okhttp3.Response): String {
         check(r.isSuccessful)
         val input = requireNotNull(r.body()).byteStream()
         val output = java.io.ByteArrayOutputStream()
@@ -53,7 +76,7 @@ object OpenMeteoSource {
             val n=input.read(buffer);if(n<0) break
             check(output.size()+n<=1_500_000);output.write(buffer,0,n)
         }
-        output.toString("UTF-8")
+        return output.toString("UTF-8")
     }
 
     /** Reuse the existing presentation DTO, without representing the data as a Caiyun response. */

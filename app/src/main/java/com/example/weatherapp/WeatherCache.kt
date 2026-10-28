@@ -33,6 +33,7 @@ object WeatherCache {
 
     fun saveCaiyun(context: Context, page: CityPage, response: CaiyunResponse) {
         migrateToUnifiedSchema(context)
+        response.result?.let { ForecastDayHistoryCache.save(context,page,ForecastDayHistoryCache.fromCaiyun(it)) }
         response.result?.hourly?.let { hourly ->
             val uv = hourly.lifeIndex?.ultraviolet.orEmpty().associateBy { it.datetime }
             val sky = hourly.skycon.orEmpty().associateBy { it.datetime }
@@ -48,6 +49,7 @@ object WeatherCache {
     }
 
     fun saveQWeather(context: Context, page: CityPage, response: QWeatherBundle) {
+        ForecastDayHistoryCache.save(context,page,ForecastDayHistoryCache.fromQWeather(response))
         save(context, key(context,WeatherSettings.SOURCE_QWEATHER, page), gson.toJson(response))
     }
 
