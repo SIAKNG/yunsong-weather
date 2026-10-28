@@ -277,14 +277,19 @@
                     android:focusable="true"
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
-                    <TextView android:layout_width="0dp" android:layout_height="wrap_content"
+                    <TextView android:id="@+id/tvCheckUpdateTitle" android:layout_width="0dp" android:layout_height="wrap_content"
                         android:layout_weight="1" android:text="检查更新"
                         android:textColor="@color/text_primary" android:textSize="15sp" android:textStyle="bold" />
+                    <ProgressBar android:id="@+id/updateCheckProgress"
+                        style="?android:attr/progressBarStyleSmall"
+                        android:layout_width="18dp" android:layout_height="18dp"
+                        android:layout_marginStart="8dp" android:visibility="gone"
+                        android:indeterminate="true" android:importantForAccessibility="no" />
                     <TextView android:id="@+id/tvUpdateStatus" android:layout_width="wrap_content"
                         android:layout_height="wrap_content" android:maxWidth="180dp"
                         android:layout_marginStart="8dp" android:gravity="end"
                         android:text="正在检查…" android:textColor="@color/text_secondary" android:textSize="13sp" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    <TextView android:id="@+id/updateDownloadArrow" android:layout_width="wrap_content" android:layout_height="wrap_content"
                         android:layout_marginStart="10dp" android:importantForAccessibility="no"
                         android:text="›" android:textColor="@color/text_secondary" android:textSize="22sp" />
                 </LinearLayout>

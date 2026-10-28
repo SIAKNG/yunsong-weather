@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="forecast_capsule_track_top">#D5DEE7</color>
+    <color name="forecast_capsule_track_bottom">#CFD8E3</color>
+    <color name="forecast_capsule_selected_top">#FFFFFF</color>
+    <color name="forecast_capsule_selected_bottom">#EEF4FA</color>
+    <color name="forecast_capsule_selected_outline">#FFFFFF</color>
+    <dimen name="forecast_capsule_selected_stroke">1dp</dimen>
+</resources>

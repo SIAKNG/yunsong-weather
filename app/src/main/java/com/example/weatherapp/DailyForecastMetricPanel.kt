@@ -74,8 +74,10 @@ internal class DailyForecastMetricPanel(
         // Same single track + moving inner highlight as the homepage line/list switch.
         val capsule = android.widget.FrameLayout(context).apply {
             tag="daily_metric_capsule"
-            background=ContextCompat.getDrawable(context,R.drawable.mode_capsule_bg)?.mutate()?.also {
-                (it as? GradientDrawable)?.cornerRadius=dp(18).toFloat()
+            background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,intArrayOf(
+                ContextCompat.getColor(context,R.color.forecast_capsule_track_top),
+                ContextCompat.getColor(context,R.color.forecast_capsule_track_bottom))).apply {
+                cornerRadius=dp(18).toFloat()
             }
             setPadding(dp(2),dp(2),dp(2),dp(2))
             clipToOutline=true;outlineProvider=android.view.ViewOutlineProvider.BACKGROUND
@@ -89,8 +91,11 @@ internal class DailyForecastMetricPanel(
         val content=android.widget.FrameLayout(context)
         capsuleThumb=View(context).apply {
             tag="weather_segment_thumb"
-            background=ContextCompat.getDrawable(context,R.drawable.mode_tab_selected_bg)?.mutate()?.also {
-                (it as? GradientDrawable)?.cornerRadius=dp(14).toFloat()
+            background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,intArrayOf(
+                ContextCompat.getColor(context,R.color.forecast_capsule_selected_top),
+                ContextCompat.getColor(context,R.color.forecast_capsule_selected_bottom))).apply {
+                cornerRadius=dp(14).toFloat()
+                setStroke(resources.getDimensionPixelSize(R.dimen.forecast_capsule_selected_stroke),ContextCompat.getColor(context,R.color.forecast_capsule_selected_outline))
             }
             elevation=dp(2).toFloat()
             outlineProvider=android.view.ViewOutlineProvider.BACKGROUND
@@ -99,7 +104,7 @@ internal class DailyForecastMetricPanel(
                 outlineSpotShadowColor=Color.TRANSPARENT
             }
         }
-        content.addView(capsuleThumb,android.widget.FrameLayout.LayoutParams(dp(49),dp(28),Gravity.CENTER_VERTICAL).apply {leftMargin=dp(2)})
+        content.addView(capsuleThumb,android.widget.FrameLayout.LayoutParams(dp(if(selectedMetric==DailyForecastMetric.TEMPERATURE) 82 else 50),dp(28),Gravity.CENTER_VERTICAL).apply {leftMargin=dp(2)})
         content.addView(row,android.widget.FrameLayout.LayoutParams(-2,-1))
         capsuleScroll = object : HorizontalScrollView(context) {
             override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
@@ -116,12 +121,15 @@ internal class DailyForecastMetricPanel(
         DailyForecastMetric.entries.forEach {metric ->
             val chip=TextView(context).apply {
                 tag="daily_metric:${metric.name}";text=metric.title;textSize=12f;gravity=Gravity.CENTER
+                isSingleLine=true;includeFontPadding=false
                 isClickable=true;isFocusable=true
                 setOnClickListener {select(metric)}
             }
-            chips.add(chip);row.addView(chip,LayoutParams(dp(if(metric==DailyForecastMetric.TEMPERATURE) 86 else 54),-1))
+            val width=maxOf(dp(if(metric==DailyForecastMetric.TEMPERATURE) 86 else 54),kotlin.math.ceil(chip.paint.measureText(metric.title)).toInt()+dp(24))
+            chips.add(chip);row.addView(chip,LayoutParams(width,-1))
         }
         capsule.addOnLayoutChangeListener {_,_,_,_,_,_,_,_,_-> moveCapsuleThumb(false)}
+        row.addOnLayoutChangeListener {_,_,_,_,_,_,_,_,_-> moveCapsuleThumb(false)}
         capsule.post {moveCapsuleThumb(false)}
         val panel = LinearLayout(context).apply {
             orientation=VERTICAL;setPadding(dp(6),dp(14),dp(6),dp(10))
@@ -195,8 +203,10 @@ internal class DailyForecastMetricPanel(
         if(!animate && thumbAnimator?.isRunning==true) return
         thumbAnimator?.cancel()
         val startX=capsuleThumb.translationX
-        val startWidth=capsuleThumb.layoutParams.width
-        val targetWidth=(chip.width-dp(5)).coerceAtLeast(dp(12))
+        val startWidth=capsuleThumb.width.takeIf {it>0} ?: capsuleThumb.layoutParams.width
+        val targetWidth=(chip.width-2*dp(2)).coerceAtLeast(dp(12))
+        val targetHeight=(chip.height-2*dp(2)).coerceAtLeast(dp(12))
+        if(capsuleThumb.layoutParams.height!=targetHeight) capsuleThumb.layoutParams=capsuleThumb.layoutParams.apply {height=targetHeight}
         fun position(fraction: Float) {
             capsuleThumb.translationX=startX+(target-startX)*fraction
             val width=(startWidth+(targetWidth-startWidth)*fraction).roundToInt()

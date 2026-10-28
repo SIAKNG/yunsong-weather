@@ -74,7 +74,7 @@ class UpdateSettingsDeviceTest {
                         val panel = activity.findViewById<View>(R.id.appInformationPanel)
                         var parent = panel.parent
                         while (parent != null && parent !is ScrollView) parent = parent.parent
-                        (parent as? ScrollView)?.fullScroll(View.FOCUS_DOWN)
+                        (parent as? ScrollView)?.let(::scrollToPanelBottom)
                     }
                     ins.waitForIdleSync()
                     val visible = Rect()
@@ -83,12 +83,7 @@ class UpdateSettingsDeviceTest {
                         assertTrue(panel.getGlobalVisibleRect(visible))
                         assertEquals(panel.height,visible.height())
                     }
-                    val screen = requireNotNull(ins.uiAutomation.takeScreenshot())
-                    val bitmap = Bitmap.createBitmap(screen,visible.left,visible.top,visible.width(),visible.height())
-                    val folder = File(context.getExternalFilesDir(null),"update-review").apply { mkdirs() }
-                    File(folder,"panel-$dark.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }
-                    bitmap.recycle()
-                    screen.recycle()
+                    capturePanel(scenario,"panel-$dark.png")
                 }
             }
         } finally {
@@ -104,12 +99,13 @@ class UpdateSettingsDeviceTest {
         }
     }
 
-    @Test fun updateClickOpensExpectedGitHubDownloadPage() {
-        var opened: Intent? = null
-        val monitor = object : android.app.Instrumentation.ActivityMonitor() {
+    @Test fun updateClickChecksWithSpinnerAndOnlyNewVersionsOpenDownloads() {
+        val original=WeatherSettings.themeMode(context)
+        val opened=java.util.Collections.synchronizedList(ArrayList<Intent>())
+        val monitor=object : android.app.Instrumentation.ActivityMonitor() {
             override fun onStartActivity(intent: Intent): android.app.Instrumentation.ActivityResult? {
-                if (intent.action == Intent.ACTION_VIEW && intent.data?.host == "github.com") {
-                    opened = Intent(intent)
+                if(intent.action==Intent.ACTION_VIEW && intent.data?.host=="github.com") {
+                    opened.add(Intent(intent))
                     return android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_CANCELED,null)
                 }
                 return null
@@ -117,12 +113,78 @@ class UpdateSettingsDeviceTest {
         }
         ins.addMonitor(monitor)
         try {
-            ActivityScenario.launch(WeatherSettingsActivity::class.java).use { scenario ->
-                scenario.onActivity { it.findViewById<View>(R.id.btnCheckUpdate).performClick() }
-                ins.waitForIdleSync()
-                assertEquals(AppUpdatePolicy.DOWNLOAD_PAGE,opened?.dataString)
+            for(dark in listOf(false,true)) {
+                WeatherSettings.setThemeMode(context,if(dark) WeatherSettings.THEME_DARK else WeatherSettings.THEME_LIGHT)
+                ins.runOnMainSync {WeatherSettings.applyNightMode(context)}
+                launchControlledUpdateScenario().use {scenario ->
+                    for(status in listOf(AppUpdatePolicy.Status.CURRENT,AppUpdatePolicy.Status.FAILED,AppUpdatePolicy.Status.UNAVAILABLE,AppUpdatePolicy.Status.NEW_VERSION)) {
+                        opened.clear()
+                        val started=java.util.concurrent.CountDownLatch(1)
+                        val release=java.util.concurrent.CountDownLatch(1)
+                        val calls=java.util.concurrent.atomic.AtomicInteger()
+                        try {
+                            scenario.onActivity {activity ->
+                                val request: (Boolean)->AppUpdatePolicy.Result={force ->
+                                    assertTrue("A user tap bypasses the automatic cache",force)
+                                    calls.incrementAndGet();started.countDown()
+                                    release.await(4,java.util.concurrent.TimeUnit.SECONDS)
+                                    AppUpdatePolicy.Result(status,if(status==AppUpdatePolicy.Status.NEW_VERSION) "9.9" else "")
+                                }
+                                activity.javaClass.getDeclaredField("updateRequest").apply {isAccessible=true}.set(activity,request)
+                                activity.findViewById<View>(R.id.btnCheckUpdate).performClick()
+                                assertEquals(View.VISIBLE,activity.findViewById<View>(R.id.updateCheckProgress).visibility)
+                                assertTrue(activity.findViewById<android.widget.ProgressBar>(R.id.updateCheckProgress).isIndeterminate)
+                                assertTrue(activity.findViewById<TextView>(R.id.tvUpdateStatus).text.contains("正在检查"))
+                                activity.findViewById<View>(R.id.btnCheckUpdate).performClick()
+                            }
+                            assertTrue(started.await(2,java.util.concurrent.TimeUnit.SECONDS))
+                            assertEquals(1,calls.get());assertTrue(opened.isEmpty())
+                            if(status==AppUpdatePolicy.Status.CURRENT) capturePanel(scenario,"checking-$dark.png")
+                            release.countDown();waitForCheckCompletion(scenario)
+                            scenario.onActivity {activity ->
+                                assertEquals("$status must finish its checking feedback",View.GONE,activity.findViewById<View>(R.id.updateCheckProgress).visibility)
+                                assertEquals(AppUpdatePolicy.Result(status,if(status==AppUpdatePolicy.Status.NEW_VERSION) "9.9" else "").label,
+                                    activity.findViewById<TextView>(R.id.tvUpdateStatus).text.toString())
+                                assertEquals(if(status==AppUpdatePolicy.Status.NEW_VERSION) View.VISIBLE else View.GONE,
+                                    activity.findViewById<View>(R.id.updateDownloadArrow).visibility)
+                            }
+                            assertEquals(if(status==AppUpdatePolicy.Status.NEW_VERSION) 1 else 0,opened.size)
+                            if(opened.isNotEmpty()) assertEquals(AppUpdatePolicy.DOWNLOAD_PAGE,opened.single().dataString)
+                        } finally {release.countDown()}
+                    }
+                }
             }
-        } finally { ins.removeMonitor(monitor) }
+        } finally {
+            ins.removeMonitor(monitor)
+            WeatherSettings.setThemeMode(context,original)
+            ins.runOnMainSync {WeatherSettings.applyNightMode(context)}
+        }
+    }
+
+    @Test fun manualCheckCannotBeOverwrittenByAnEarlierAutomaticResult() {
+        val started=java.util.concurrent.CountDownLatch(1)
+        val release=java.util.concurrent.CountDownLatch(1)
+        launchControlledUpdateScenario().use {scenario ->
+            android.os.SystemClock.sleep(500);ins.waitForIdleSync()
+            try {
+                scenario.onActivity {activity ->
+                    val request: (Boolean)->AppUpdatePolicy.Result={manual ->
+                        if(!manual) {started.countDown();release.await(4,java.util.concurrent.TimeUnit.SECONDS)}
+                        AppUpdatePolicy.Result(if(manual) AppUpdatePolicy.Status.FAILED else AppUpdatePolicy.Status.NEW_VERSION,"9.9")
+                    }
+                    activity.javaClass.getDeclaredField("updateRequest").apply {isAccessible=true}.set(activity,request)
+                    activity.javaClass.getDeclaredMethod("requestUpdateCheck",Boolean::class.javaPrimitiveType).apply {isAccessible=true}.invoke(activity,false)
+                }
+                assertTrue(started.await(2,java.util.concurrent.TimeUnit.SECONDS))
+                scenario.onActivity {it.findViewById<View>(R.id.btnCheckUpdate).performClick()}
+                android.os.SystemClock.sleep(500);ins.waitForIdleSync()
+                release.countDown();android.os.SystemClock.sleep(250);ins.waitForIdleSync()
+                scenario.onActivity {activity ->
+                    assertEquals(AppUpdatePolicy.Result(AppUpdatePolicy.Status.FAILED).label,activity.findViewById<TextView>(R.id.tvUpdateStatus).text.toString())
+                    assertEquals(View.GONE,activity.findViewById<View>(R.id.updateDownloadArrow).visibility)
+                }
+            } finally {release.countDown()}
+        }
     }
 
     @Test fun aboutKeepsIconCreditAndUsageTermsInBothThemes() {
@@ -146,4 +208,64 @@ class UpdateSettingsDeviceTest {
             ins.runOnMainSync { WeatherSettings.applyNightMode(context) }
         }
     }
+    private fun capturePanel(scenario: ActivityScenario<WeatherSettingsActivity>,name:String) {
+        lateinit var window:android.view.Window
+        val rect=Rect()
+        scenario.onActivity {a ->
+            val panel=a.findViewById<View>(R.id.appInformationPanel)
+            var parent=panel.parent
+            while(parent!=null && parent !is ScrollView) parent=parent.parent
+            (parent as? ScrollView)?.let(::scrollToPanelBottom)
+            window=a.window
+        }
+        android.os.SystemClock.sleep(120);ins.waitForIdleSync()
+        scenario.onActivity {assertTrue(it.findViewById<View>(R.id.appInformationPanel).getGlobalVisibleRect(rect))}
+        val bitmap=Bitmap.createBitmap(rect.width(),rect.height(),Bitmap.Config.ARGB_8888)
+        val done=java.util.concurrent.CountDownLatch(1);var result=-1
+        ins.runOnMainSync {android.view.PixelCopy.request(window,rect,bitmap,{result=it;done.countDown()},android.os.Handler(android.os.Looper.getMainLooper()))}
+        assertTrue(done.await(5,java.util.concurrent.TimeUnit.SECONDS));assertEquals(android.view.PixelCopy.SUCCESS,result)
+        val folder=File(context.getExternalFilesDir(null),"update-review").apply {mkdirs()}
+        File(folder,name).outputStream().use {bitmap.compress(Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
+    }
+
+    /** Install the fake before onResume, so UI tests never race a real GitHub request. */
+    private fun launchControlledUpdateScenario(): ActivityScenario<WeatherSettingsActivity> {
+        val application=context.applicationContext as android.app.Application
+        val callbacks=object : android.app.Application.ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity:android.app.Activity,state:android.os.Bundle?) {
+                if(activity is WeatherSettingsActivity) {
+                    val request: (Boolean)->AppUpdatePolicy.Result={AppUpdatePolicy.Result(AppUpdatePolicy.Status.CURRENT)}
+                    activity.javaClass.getDeclaredField("updateRequest").apply {isAccessible=true}.set(activity,request)
+                }
+            }
+            override fun onActivityStarted(a:android.app.Activity) {}
+            override fun onActivityResumed(a:android.app.Activity) {}
+            override fun onActivityPaused(a:android.app.Activity) {}
+            override fun onActivityStopped(a:android.app.Activity) {}
+            override fun onActivitySaveInstanceState(a:android.app.Activity,b:android.os.Bundle) {}
+            override fun onActivityDestroyed(a:android.app.Activity) {}
+        }
+        application.registerActivityLifecycleCallbacks(callbacks)
+        return try {ActivityScenario.launch(WeatherSettingsActivity::class.java)} finally {application.unregisterActivityLifecycleCallbacks(callbacks)}
+    }
+
+    private fun waitForCheckCompletion(scenario:ActivityScenario<WeatherSettingsActivity>) {
+        val deadline=android.os.SystemClock.uptimeMillis()+2500
+        var complete=false
+        while(!complete && android.os.SystemClock.uptimeMillis()<deadline) {
+            scenario.onActivity {a ->complete=a.findViewById<View>(R.id.updateCheckProgress).visibility==View.GONE}
+            if(!complete) android.os.SystemClock.sleep(40)
+        }
+        assertTrue("Update checking must complete after the response arrives",complete)
+        ins.waitForIdleSync()
+    }
+
+    private fun scrollToPanelBottom(scroll:ScrollView) {
+        val child=scroll.getChildAt(0) ?: return
+        val margins=child.layoutParams as? android.view.ViewGroup.MarginLayoutParams
+        val extent=child.height+(margins?.topMargin ?: 0)+(margins?.bottomMargin ?: 0)
+        val bottom=(extent-scroll.height+scroll.paddingTop+scroll.paddingBottom).coerceAtLeast(0)
+        scroll.scrollTo(0,bottom)
+    }
+
 }

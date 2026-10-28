@@ -57,7 +57,13 @@ class WeatherSettingsActivity : AppCompatActivity() {
     private lateinit var tvCaiyunAccess: TextView
     private lateinit var tvCaiyunToken: TextView
     private lateinit var tvNotificationDiagnostics: TextView
-    private val updateExecutor = Executors.newSingleThreadExecutor()
+    private val updateExecutor = Executors.newFixedThreadPool(2)
+    private val updateUi = android.os.Handler(android.os.Looper.getMainLooper())
+    private var updateGeneration = 0
+    private var checkingUpdate = false
+    private var manualUpdatePending = false
+    private var lastUpdateCompletedAt = 0L
+    private var updateRequest: (Boolean) -> AppUpdatePolicy.Result = { force -> AppUpdateChecker(applicationContext).check(force) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -278,13 +284,7 @@ class WeatherSettingsActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnAbout).setOnClickListener {
             startActivity(Intent(this, WeatherAboutActivity::class.java))
         }
-        findViewById<View>(R.id.btnCheckUpdate).setOnClickListener {
-            runCatching {
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(AppUpdatePolicy.DOWNLOAD_PAGE)))
-            }.onFailure {
-                Toast.makeText(this, "未找到浏览器，请在 GitHub 查看 SIAKNG/yunsong-weather 的 Releases", Toast.LENGTH_LONG).show()
-            }
-        }
+        findViewById<View>(R.id.btnCheckUpdate).setOnClickListener { requestUpdateCheck(manual = true) }
         SettingsGlassStyle.applyTree(findViewById(R.id.settingsRoot))
     }
 
@@ -451,9 +451,8 @@ class WeatherSettingsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (!updateExecutor.isShutdown) updateExecutor.execute {
-            val result = AppUpdateChecker(applicationContext).check()
-            runOnUiThread { if (!isFinishing && !isDestroyed) renderUpdateStatus(result) }
+        if(lastUpdateCompletedAt==0L || android.os.SystemClock.uptimeMillis()-lastUpdateCompletedAt>=60_000L) {
+            requestUpdateCheck(manual = false)
         }
         if (BuildConfig.USER_CONFIGURABLE) {
             val config = UserApiConfiguration.read(this)
@@ -472,17 +471,65 @@ class WeatherSettingsActivity : AppCompatActivity() {
         }
     }
 
+    private fun requestUpdateCheck(manual: Boolean) {
+        if(updateExecutor.isShutdown || isFinishing || isDestroyed) return
+        if(checkingUpdate && (!manual || manualUpdatePending)) return
+        checkingUpdate=true
+        manualUpdatePending=manual
+        val generation=++updateGeneration
+        val started=android.os.SystemClock.uptimeMillis()
+        findViewById<android.widget.ProgressBar>(R.id.updateCheckProgress).apply {
+            indeterminateTintList=android.content.res.ColorStateList.valueOf(ContextCompat.getColor(this@WeatherSettingsActivity,R.color.accent))
+            visibility=View.VISIBLE
+        }
+        findViewById<TextView>(R.id.tvUpdateStatus).apply {
+            text="正在检查更新…";setTextColor(ContextCompat.getColor(this@WeatherSettingsActivity,R.color.text_secondary))
+            setTypeface(null,Typeface.NORMAL)
+        }
+        findViewById<View>(R.id.updateDownloadArrow).visibility=View.GONE
+        findViewById<View>(R.id.btnCheckUpdate).contentDescription="正在检查更新，请稍候"
+        val request=updateRequest
+        updateExecutor.execute {
+            val result=runCatching {request(manual)}.getOrElse {AppUpdatePolicy.Result(AppUpdatePolicy.Status.FAILED)}
+            val remaining=(400L-(android.os.SystemClock.uptimeMillis()-started)).coerceAtLeast(0L)
+            updateUi.postDelayed({
+                if(!isFinishing && !isDestroyed && generation==updateGeneration) {
+                    checkingUpdate=false;manualUpdatePending=false
+                    lastUpdateCompletedAt=android.os.SystemClock.uptimeMillis()
+                    renderUpdateStatus(result)
+                    if(manual && lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+                        if(result.status==AppUpdatePolicy.Status.NEW_VERSION) openUpdateDownloadPage()
+                        else Toast.makeText(this,when(result.status) {
+                            AppUpdatePolicy.Status.CURRENT -> "已是最新版本"
+                            AppUpdatePolicy.Status.UNAVAILABLE -> "暂时无法获取版本信息，请稍后重试"
+                            else -> "检查更新失败，请稍后重试"
+                        },Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },remaining)
+        }
+    }
+
+    private fun openUpdateDownloadPage() {
+        runCatching { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(AppUpdatePolicy.DOWNLOAD_PAGE))) }
+            .onFailure {Toast.makeText(this,"未找到浏览器，请在 GitHub 查看 SIAKNG/yunsong-weather 的 Releases",Toast.LENGTH_LONG).show()}
+    }
+
     internal fun renderUpdateStatus(result: AppUpdatePolicy.Result) {
+        findViewById<View>(R.id.updateCheckProgress).visibility=View.GONE
+        findViewById<View>(R.id.updateDownloadArrow).visibility=if(result.status==AppUpdatePolicy.Status.NEW_VERSION) View.VISIBLE else View.GONE
         findViewById<TextView>(R.id.tvUpdateStatus).apply {
             text = result.label
             setTextColor(ContextCompat.getColor(this@WeatherSettingsActivity,
                 if (result.status == AppUpdatePolicy.Status.NEW_VERSION) R.color.accent else R.color.text_secondary))
             setTypeface(null, if (result.status == AppUpdatePolicy.Status.NEW_VERSION) Typeface.BOLD else Typeface.NORMAL)
         }
-        findViewById<View>(R.id.btnCheckUpdate).contentDescription = "检查更新，${result.label}，打开 GitHub 安装包下载页"
+        findViewById<View>(R.id.btnCheckUpdate).contentDescription = if(result.status==AppUpdatePolicy.Status.NEW_VERSION) "检查更新，${result.label}，检查后前往下载页" else "检查更新，${result.label}，点击重新检查"
     }
 
     override fun onDestroy() {
+        updateGeneration++
+        updateUi.removeCallbacksAndMessages(null)
         updateExecutor.shutdownNow()
         super.onDestroy()
     }
