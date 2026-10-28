@@ -39,6 +39,34 @@ class Weather13DeviceTest {
         ForecastHour(midnight(offset)+h*ForecastDetailData.HOUR,"CLEAR_DAY",15.0+h%10,14.0+h%10,8.0+h%10,
             h%10.0,40.0+h,35.0+h,false,135.0,h*2.0,if(h in 10..15) 1.2 else 0.0,25.0,1008.0+h%8,12.0)
     }
+
+    @Test fun capsuleShadowSlidesAndRapidClicksContinueFromItsCurrentPosition() {
+        val date=DailyForecastDetailPolicy.dateKey(midnight(0))
+        ActivityScenario.launch<ForecastDetailActivity>(ForecastDetailActivity.createIntent(context,"北京市",rows(0),date)).use {scenario ->
+            SystemClock.sleep(350);ins.waitForIdleSync()
+            var target=0f
+            scenario.onActivity {a ->
+                val root=a.findViewById<View>(android.R.id.content)
+                val thumb=root.findViewWithTag<View>("weather_segment_thumb")
+                assertTrue(thumb.elevation>0f)
+                val rain=root.findViewWithTag<View>("daily_metric:RAIN")
+                target=rain.left.toFloat();rain.performClick()
+                assertTrue(thumb.translationX<target)
+            }
+            SystemClock.sleep(65)
+            scenario.onActivity {a ->
+                val root=a.findViewById<View>(android.R.id.content)
+                val thumb=root.findViewWithTag<View>("weather_segment_thumb")
+                assertTrue("A visible intermediate frame precedes the selected location",thumb.translationX>0f && thumb.translationX<target)
+                val position=thumb.translationX
+                val wind=root.findViewWithTag<View>("daily_metric:WIND")
+                target=wind.left.toFloat();wind.performClick()
+                assertEquals("Rapid taps cannot reset or jump the moving shadow",position,thumb.translationX,.1f)
+            }
+            SystemClock.sleep(350);ins.waitForIdleSync()
+            scenario.onActivity {a ->assertEquals(target,a.findViewById<View>(android.R.id.content).findViewWithTag<View>("weather_segment_thumb").translationX,.5f)}
+        }
+    }
     @Suppress("UNCHECKED_CAST") private fun <T> field(target: Any,name: String): T=
         target.javaClass.getDeclaredField(name).apply {isAccessible=true}.get(target) as T
 
@@ -55,10 +83,16 @@ class Weather13DeviceTest {
                     scenario.onActivity {activity ->
                         val panel=activity.findViewById<View>(android.R.id.content).findViewWithTag<DailyForecastMetricPanel>("daily_metric_panel")
                         assertNotNull(panel)
+                        val todayButton=activity.findViewById<View>(android.R.id.content).findViewWithTag<TextView>("forecast_return_today")
+                        assertEquals("返回今日",todayButton.text.toString())
+                        assertEquals("daily_summary_header",(todayButton.parent as View).tag)
+                        assertFalse(todayButton.isEnabled)
+                        assertNull(panel.findViewWithTag<View>("forecast_return_current"))
                         val capsule=panel.findViewWithTag<ViewGroup>("daily_metric_capsule")
                         assertNotNull(capsule)
                         assertNotNull(capsule.findViewWithTag<View>("weather_segment_thumb"))
                         assertTrue(panel.chart.height > 120*activity.resources.displayMetrics.density)
+                        assertTrue("The expanded graph uses nearly the full capsule width",panel.chart.width>capsule.width*.94f)
                         val expectedTime=midnight(0)+11*ForecastDetailData.HOUR
                         panel.chart.selectTime(expectedTime)
                         for(metric in DailyForecastMetric.entries) {

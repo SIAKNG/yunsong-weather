@@ -366,7 +366,7 @@ class HourlyMetricChartView @JvmOverloads constructor(
     }
 
     private fun axisText(value: Double): String = when(forecastMetric) {
-        DailyForecastMetric.RAIN -> "${String.format(Locale.US,"%.1f",value).removeSuffix(".0")}mm"
+        DailyForecastMetric.RAIN -> "${value.roundToInt()}%"
         DailyForecastMetric.AQI -> value.roundToInt().toString()
         else -> WeatherSettings.metricAxisText(context, kind, value)
     }

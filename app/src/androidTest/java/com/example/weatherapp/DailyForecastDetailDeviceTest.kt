@@ -137,7 +137,7 @@ class DailyForecastDetailDeviceTest {
                     scenario.recreate();settle()
                     scenario.onActivity {a ->
                         assertEquals(10,pager(a).currentItem)
-                        page(a,key(9)).view.findViewWithTag<View>("forecast_return_current").performClick()
+                        page(a,key(9)).view.findViewWithTag<View>("forecast_return_today").performClick()
                     };settle()
                     scenario.onActivity {a ->assertEquals(1,pager(a).currentItem)}
                     scenario.onActivity {a ->a.findViewById<View>(android.R.id.content).findViewWithTag<View>("daily_date:${key(14)}").performClick()};settle()

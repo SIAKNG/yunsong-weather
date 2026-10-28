@@ -156,7 +156,24 @@ internal class ForecastWeatherPage(
         if(::hourlyScroll.isInitialized) hourlyScroll.smoothScrollTo(0,0)
     }
     private fun addSummary(parent: LinearLayout) {
-        parent.addView(sectionTitle("信息摘要"))
+        if (day == null) parent.addView(sectionTitle("信息摘要"))
+        else {
+            val today=DailyForecastDetailPolicy.dateKey(System.currentTimeMillis())
+            val atToday=day.date==today
+            val unavailable=currentDay!=today
+            val row=LinearLayout(this).apply {tag="daily_summary_header";gravity=Gravity.CENTER_VERTICAL}
+            row.addView(sectionTitle("信息摘要"),LinearLayout.LayoutParams(0,-2,1f))
+            val todayButton=FrostedActionButton(this).apply {
+                tag="forecast_return_today";text="返回今日";textSize=11f;gravity=Gravity.CENTER
+                setOnClickListener {onReturnToCurrent?.invoke() ?: resetToCurrent()}
+            }
+            DetailReturnCurrentButtonStyle.apply(todayButton,atToday || unavailable,palette.primary,palette.secondary,
+                ColorUtils.setAlphaComponent(palette.primary,28),resources.displayMetrics.density)
+            todayButton.contentDescription=when {unavailable -> "暂无今日预报";atToday -> "已位于今日";else -> "返回今日天气"}
+            ViewCompat.setStateDescription(todayButton,if(atToday || unavailable) "不可点击" else "可点击")
+            row.addView(todayButton,LinearLayout.LayoutParams(dp(76),dp(30)))
+            parent.addView(row,LinearLayout.LayoutParams(-1,dp(36)))
+        }
         parent.addView(
             HourlyForecastSummaryView(
                 context = this,
@@ -403,9 +420,8 @@ internal class ForecastWeatherPage(
 
     private fun addChartSection(parent: LinearLayout) {
         if (day != null) {
-            dailyPanel=DailyForecastMetricPanel(this,day,currentDay,initialMetric,onMetricChanged,initialScrollX,onScrollPosition) {
-                onReturnToCurrent?.invoke() ?: resetToCurrent()
-            }.also { parent.addView(it,LinearLayout.LayoutParams(-1,0,1f).apply {topMargin=dp(8)}) }
+            dailyPanel=DailyForecastMetricPanel(this,day,initialMetric,onMetricChanged,initialScrollX,onScrollPosition)
+                .also { parent.addView(it,LinearLayout.LayoutParams(-1,0,1f).apply {topMargin=dp(8)}) }
             return
         }
         parent.addView(buildLegend(), LinearLayout.LayoutParams(-1, dp(32)).apply { topMargin = dp(8) })
