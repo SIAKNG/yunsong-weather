@@ -70,6 +70,38 @@ class Weather13DeviceTest {
     @Suppress("UNCHECKED_CAST") private fun <T> field(target: Any,name: String): T=
         target.javaClass.getDeclaredField(name).apply {isAccessible=true}.get(target) as T
 
+    @Test fun combinedTemperatureShowsActualFeelsAndZeroPositiveNegativeDelta() {
+        val original=WeatherSettings.tempUnit(context)
+        try {
+            WeatherSettings.setTempUnit(context,WeatherSettings.TEMP_C)
+            val hour=Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+            val points=rows(0).mapIndexed {h,p ->p.copy(temperature=20.0,feelsLike=when((h-hour+24)%24) {0->20.0;1->21.0;2->19.0;3->null;else->20.0})}
+            val date=DailyForecastDetailPolicy.dateKey(midnight(0))
+            ActivityScenario.launch<ForecastDetailActivity>(ForecastDetailActivity.createIntent(context,"北京市",points,date)).use {scenario ->
+                SystemClock.sleep(350);ins.waitForIdleSync()
+                scenario.onActivity {a ->
+                    val root=a.findViewById<View>(android.R.id.content)
+                    val panel=root.findViewWithTag<DailyForecastMetricPanel>("daily_metric_panel")
+                    assertNull(root.findViewWithTag<View>("daily_metric:FEELS_LIKE"))
+                    assertEquals(8,DailyForecastMetric.entries.size)
+                    val meta=root.findViewWithTag<TextView>("daily_metric_meta")
+                    assertEquals("Open at the actual current hour, rather than round up at half past",hour,field<Int>(panel.chart,"selectedIndex"))
+                    assertTrue(meta.text.contains("温差 0℃"))
+                    for(offset in 0..3) {
+                        val index=(hour+offset)%24
+                        panel.chart.selectTime(midnight(0)+index*ForecastDetailData.HOUR)
+                        assertEquals(20.0,field<DoubleArray>(panel.chart,"secondary")[index],0.0)
+                        val reading=root.findViewWithTag<TextView>("daily_metric_reading").text.toString()
+                        assertTrue(reading.contains("气温 20"))
+                        assertTrue(meta.text.contains("彩线体感 / 灰线气温"))
+                        assertTrue(meta.text.contains(when(offset) {0->"温差 0℃";1->"高 1℃";2->"低 1℃";else->"暂不能计算温差"}))
+                        if(offset==3) assertTrue(field<DoubleArray>(panel.chart,"values")[index].isNaN())
+                    }
+                }
+            }
+        } finally {WeatherSettings.setTempUnit(context,original)}
+    }
+
     @Test fun dailyCapsulesUseMetricChartsKeepTheHourAndFitBothThemes() {
         val original=WeatherSettings.themeMode(context)
         try {
