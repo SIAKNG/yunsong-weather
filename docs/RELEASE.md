@@ -4,10 +4,10 @@
 执行 `:app:assembleUserApiRelease` 后，在本机使用 Android SDK 的 `zipalign`、`apksigner` 完成对齐验证和签名。
 保持今后更新的应用包名及签名证书不变，并递增 `versionCode`。
 
-## 1.2 正式签名
+## 1.3 正式签名
 
 - 包名：`com.example.weatherapp.userapi`
-- 应用名称：云松天气；版本标识：1.2-userapi；Android 数字版本号：7。
+- 应用名称：云松天气；版本标识：1.3-userapi；Android 数字版本号：8。
 - 发布证书 SHA-256：`4cbd6193380941fad84db288909761d5022402a029e41f3ecabeabcb1862ed40`。
 - 该摘要是公开的证书指纹，不是签名私钥。
 - 以前的本机测试版本使用另一签名，正式签名版无法直接覆盖安装。

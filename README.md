@@ -13,7 +13,7 @@
 点开卡片，可在详情页横向拖动图表，对照不同时刻的气象变化。
 
 本仓库仅提供**用户 API 配置版**，不包含维护者的天气密钥、个人服务账户或签名私钥。
-应用名为“云松天气”，版本标识 `1.2-userapi`，构建号 `7`。维护者：SIAKNG。
+应用名为“云松天气”，版本标识 `1.3-userapi`，构建号 `8`。维护者：SIAKNG。
 
 未填写个人 API 时默认使用 Open-Meteo 免费天气源；填写完整的彩云或和风接口后优先使用个人来源。
 实际数据范围见 [Open-Meteo 覆盖说明](docs/OPEN_METEO.md)。
@@ -25,7 +25,19 @@
 
 版本记录按发布时间由新到旧排列；每次更新新增一条记录，保留已有版本的介绍与下载入口。
 
-### 1.2 · 2026-10-25（当前版本）
+### 1.3 · 2026-10-29（当前版本）
+
+- 多日预报按日期直达：点击首页列表或折线中的某一天，即可打开对应日期的详情；每一天都有独立摘要、逐小时图表和“返回今日”入口。
+- 重构多日详情图表：由原先在同一列表或图表中集中展示所有日期，改为每一天独立显示当天的天气摘要及下方可切换指标的图表。图表统一渐变与高亮样式，温度、体感合并对照并显示温差。
+- 完善当天与历史展示：小时图按 00:00–23:00 组织；跨天保留已取得的同源小时预报，未获取的时段保留空缺。
+- 加快免费天气加载：Open-Meteo 天气与空气质量并行请求，天气先展示，空气质量随后补齐。
+- 改善返回主页时偶发内容不显示的问题，修复卡片进入、退出详情时毛玻璃短暂变清晰的问题。
+- 优化检查更新：点击后显示检查进度；仅在确认有新版本时打开下载页，无更新或检查失败时留在设置页显示结果。
+
+[下载 1.3 安装包](https://github.com/SIAKNG/yunsong-weather/releases/download/v1.3/yunsong-weather-1.3.apk) ·
+[查看 1.3 发布说明](https://github.com/SIAKNG/yunsong-weather/releases/tag/v1.3) · [完整更新记录](CHANGELOG.md)
+
+### 1.2 · 2026-10-25
 
 - 新增 Open-Meteo 免费天气源，无需填写 API 即可查看天气；配置个人彩云或和风 API 后使用个人天气源。
 - 修复空气质量详情仪表盘的显示错误，恢复统一的渐变仪表盘效果。
@@ -74,7 +86,7 @@
 | 城市与定位 | 顶部地址进入城市管理，搜索、添加、切换城市，查看新城市天气预览；定位可按需授权 |
 | 分钟级降雨 | 展示有数据的短时降雨强度、变化曲线、峰值与雨势说明 |
 | 48 小时详情 | 图示摘要概括温度、降水、风、紫外线和 AQI；多个图表共享时间轴，支持横滑与回到当前 |
-| 多日天气 | 查看每日天气和温度范围，进入详情对照小时级天气、温度、体感、风向、紫外线、湿度及空气质量 |
+| 多日天气 | 首页按日期直达；逐日摘要与小时图表，温度/体感双线及温差、八项指标胶囊切换、返回今日 |
 | 六项指标详情 | 紫外线、体感温度、风力、气压、能见度、湿度分别提供趋势、状态和相关生活建议 |
 | 空气质量 | AQI 仪表、等级、污染物浓度和小时趋势；排名数据有效且覆盖城市时显示全国 AQI 排名 |
 | 日出日落 | 日出、日落、太阳轨迹、昼长，以及本地计算的晨昏和霞光参考时段 |
@@ -125,10 +137,13 @@
 
 | 浅色模式 | 深色模式 |
 | :---: | :---: |
-| <img src="docs/screenshots/showcase/forecast-multiday-light.jpg" width="300" alt="浅色多日天气详情"> | <img src="docs/screenshots/showcase/forecast-multiday-dark.jpg" width="300" alt="深色多日天气详情"> |
+| <img src="docs/screenshots/v1.3/forecast-multiday-light.png" width="300" alt="浅色多日天气详情"> | <img src="docs/screenshots/v1.3/forecast-multiday-dark.png" width="300" alt="深色多日天气详情"> |
 
-日期条与下方表格联动，时刻、天气、温度、体感等随选中位置平滑变化。
-布局和可用天数由实际数据决定，不用不存在的数据把预报强行填满。
+点击首页列表的一行或折线的一列即可打开对应日期；顶部日期条切换每天的独立摘要与小时图。
+下方整体胶囊可切换温度/体感、降水、风力、紫外线、湿度、气压、能见度和空气质量。
+温度/体感使用彩色体感主线与灰色气温参考线，显示所选小时的双读数及温差；摘要右侧可返回今日。
+图表按当天 00:00–23:00 组织，已缓存的同源预报跨天保留，没有取得的小时保持空缺。
+上图为单个模拟日期的页面；实际可切换日期数量和字段覆盖由天气源决定。
 
 ### 空气质量与六项指标
 
@@ -192,7 +207,7 @@ API 填写页保留防截图保护，文档不展示真实 Token、API Key 或�
 
 ## 第一次使用
 
-1. 在 [Releases](https://github.com/SIAKNG/yunsong-weather/releases/latest) 下载 `yunsong-weather-1.2.apk` 并安装；后续安装包也在文件名中标明版本号。
+1. 在 [Releases](https://github.com/SIAKNG/yunsong-weather/releases/latest) 下载 `yunsong-weather-1.3.apk` 并安装，后续安装包也在文件名中标明版本号。
 2. 完成交互引导，认识地址、城市切换、卡片详情和刷新。
 3. 可直接使用免费天气；如需增强数据，在“天气设置 → 天气源/API 配置”按教程选填自己的接口信息。
 4. 彩云填 v2 Token；和风填 API Host 和 API Key，不要使用他人的密钥。
@@ -206,8 +221,10 @@ API 填写页保留防截图保护，文档不展示真实 Token、API Key 或�
 ### 更新与安装
 
 检查更新、使用帮助与 API 指引、关于云松天气集中在设置底部的一张毛玻璃面板中。
-发现带 APK 的较新正式版本时，行尾会提示新版本；点击打开 GitHub 下载页，不自动后台安装。
-成功检查缓存六小时，失败后十分钟再试；错误或限流不会误报“已是最新版本”。
+点击“检查更新”先显示转圈和“正在检查更新…”；只有确认存在较新正式版本，才打开 GitHub 下载页。
+无更新、网络失败或暂不可用时留在设置页显示结果；自动发现新版只显示提醒，不自动打开浏览器。
+自动检查成功缓存六小时，失败后十分钟再试；手动点击会重新检查，检查中重复点击不会重复请求。
+应用不自动后台下载或安装，错误或限流也不会误报“已是最新版本”。
 
 更新信息通过 GitHub 公开 Release 获取，无需登录 GitHub，也不需要填写 GitHub Token。
 网络受限或触发限流时可能暂时无法检查，可直接打开下载页查看最新版本。
@@ -223,7 +240,7 @@ API 填写页保留防截图保护，文档不展示真实 Token、API Key 或�
 | --- | --- | --- |
 | 首页与城市 | `MainActivity`、`WeatherFragment`、`CityManageActivity`、`CityPreviewActivity` | 城市分页、地址、卡片和预览 |
 | 背景与玻璃 | `WeatherBackgroundView`、`WeatherBackgroundPalette`、`BlurCardView`、`DetailGlassSurface` | 动态场景、调色、模糊、描边和阴影 |
-| 预报图表 | `HourlyForecastDetailActivity`、`ForecastDetailActivity`、自定义 Chart View | 48 小时/多日、时间轴、高亮和回到当前 |
+| 预报图表 | `HourlyForecastDetailActivity`、`ForecastDetailActivity`、`DailyForecastMetricPanel`、`HourlyMetricChartView` | 48 小时、逐日分页、指标胶囊、温差、高亮和返回今日 |
 | 指标与导航 | `MetricDetailActivity`、`AirQualityDetailActivity`、`SunDetailActivity`、`DetailContentPager` | 八类详情、跟手切换和天文展示 |
 | 数据接入 | `CaiyunApi.kt`、`QWeatherApi.kt`、`OpenMeteo.kt`、`AirQualityTimeline` | 请求、解析、来源与时间对齐 |
 | 缓存与历史 | `WeatherCache`、`CitySummaryCache`、`LifeAdviceCache`、历史时间线/快照文件 | 启动恢复、分组新鲜度和历史对照 |
