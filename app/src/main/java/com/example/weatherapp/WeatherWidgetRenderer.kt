@@ -107,7 +107,7 @@ internal object WeatherWidgetRenderer {
     fun render(context: Context,kind: String,widthDp: Int,heightDp: Int,city: CityPage?,data: WidgetWeather?,cities: List<Pair<CityPage,WidgetWeather?>> = emptyList()): Bitmap =
         if(WeatherInfoWidgetRenderer.supports(kind)) WeatherInfoWidgetRenderer.render(context,kind,widthDp,heightDp,city,data,cities) else renderInternal(context,kind,widthDp,heightDp,city,data,true)
     fun renderWidget(context: Context,kind: String,widthDp: Int,heightDp: Int,city: CityPage?,data: WidgetWeather?,cities: List<Pair<CityPage,WidgetWeather?>> = emptyList(),audit: MutableList<WeatherInfoWidgetRenderer.Element>?=null): Bitmap =
-        if(WeatherInfoWidgetRenderer.supports(kind)) WeatherInfoWidgetRenderer.render(context,kind,widthDp,heightDp,city,data,cities,audit) else renderInternal(context,kind,widthDp,heightDp,city,data,false,audit=audit)
+        if(WeatherInfoWidgetRenderer.supports(kind)) WeatherInfoWidgetRenderer.render(context,kind,widthDp,heightDp,city,data,cities,audit) else renderInternal(context,kind,widthDp,heightDp,city,data,kind=="large",audit=audit)
     private fun renderInternal(context: Context,kind: String,widthDp: Int,heightDp: Int,city: CityPage?,data: WidgetWeather?,showFooter: Boolean,placeholder: Boolean=false,audit: MutableList<WeatherInfoWidgetRenderer.Element>?=null): Bitmap {
         val w=widthDp.coerceIn(120,600).toFloat();val h=heightDp.coerceIn(64,700).toFloat()
         val pad=contentInset(widthDp,heightDp,kind)
@@ -153,7 +153,15 @@ internal object WeatherWidgetRenderer {
         }
         fun temp(v: Double?)=WeatherSettings.tempText(context,v)
         val header=header(context,kind,widthDp,heightDp,city,data)
-        fun footer(value: String) {if(showFooter) text(value,header.stampX,header.stampTop-Paint().apply{textSize=timestampSize(kind)}.fontMetrics.ascent,timestampSize(kind),alpha=128,maxWidth=header.stampWidth)}
+        fun footer(value: String) {if(showFooter) {
+            if(kind=="large") {
+                val size=android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP,timestampSize(kind),context.resources.displayMetrics)/context.resources.displayMetrics.density
+                font(header.size,true);val cityInk=Rect();p.getTextBounds(header.name,0,header.name.length,cityInk)
+                val bottom=header.baseline+cityInk.bottom
+                font(size);val stampInk=Rect();p.getTextBounds(value,0,value.length,stampInk)
+                text(value,w-pad,bottom-stampInk.bottom,size,alpha=128,maxWidth=header.stampWidth,align=Paint.Align.RIGHT)
+            } else text(value,header.stampX,header.stampTop-Paint().apply{textSize=timestampSize(kind)}.fontMetrics.ascent,timestampSize(kind),alpha=128,maxWidth=header.stampWidth)
+        }}
         fun cityHeader() {text(header.name,header.x,header.baseline,header.size,true,maxWidth=header.cityWidth)}
         if(data==null) {
             cityHeader()

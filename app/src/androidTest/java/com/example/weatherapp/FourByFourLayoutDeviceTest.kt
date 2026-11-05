@@ -67,27 +67,24 @@ class FourByFourLayoutDeviceTest {
     @Test fun nativeHeaderTimestampUsesTopRightAndMatchesCityInkBottom() {
         ActivityScenario.launch(WeatherWidgetActivity::class.java).use{screen->
             screen.onActivity{a->
-                for((w,h) in listOf(356 to 340,356 to 372,392 to 412)) {
-                    val data=fixture("CLOUDY",false);val header=WeatherWidgetRenderer.header(c,"large",w,h,city,data)
+                for((w,h) in listOf(356 to 340,356 to 372,392 to 412))for(hostScale in listOf(1f,.8f)) {
+                    val data=fixture("CLOUDY",false);val elements=mutableListOf<WeatherInfoWidgetRenderer.Element>()
+                    val source=WeatherWidgetRenderer.renderWidget(c,"large",w,h,city,data,audit=elements)
+                    val cityInk=elements.first{it.type=="text"&&it.label=="西安"}.bounds
+                    val stamp=elements.single{it.type=="text"&&(it.label.contains("更新")||it.label.contains("缓存")||it.label.contains("待刷新"))}
+                    assertFalse(stamp.label.contains('…'))
+                    assertEquals("City/time glyph bottoms align",cityInk.bottom,stamp.bounds.bottom,.05f)
+                    assertEquals("Equal right inset",w-18f,stamp.bounds.right,.05f)
                     val density=c.resources.displayMetrics.density
                     val parent=FrameLayout(a);val root=WeatherWidgets.views(c,-9601,"large",w,h).apply(c,parent)
-                    val stamp=root.findViewById<TextView>(R.id.widgetEditArea)
-                    stamp.visibility=View.VISIBLE;stamp.text=WeatherWidgetRenderer.updateText(c,data)
-                    stamp.setPadding((header.stampX*density).toInt(),(header.stampTop*density).toInt(),((w-header.stampX-header.stampWidth)*density).toInt(),0)
+                    assertEquals("Time must share the bitmap coordinate space on compatibility-scaled launchers",View.GONE,root.findViewById<TextView>(R.id.widgetEditArea).visibility)
                     root.findViewById<TextView>(R.id.widgetLoading).visibility=View.GONE
-                    root.findViewById<ImageView>(R.id.widgetImage).setImageBitmap(WeatherWidgetRenderer.renderWidget(c,"large",w,h,city,data))
+                    root.findViewById<ImageView>(R.id.widgetImage).setImageBitmap(source)
                     parent.addView(root);a.setContentView(parent)
-                    val pw=(w*density).toInt();val ph=(h*density).toInt();root.measure(View.MeasureSpec.makeMeasureSpec(pw,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(ph,View.MeasureSpec.EXACTLY));root.layout(0,0,pw,ph)
-                    val stampInk=Rect();stamp.paint.getTextBounds(stamp.text.toString(),0,stamp.text.length,stampInk)
-                    val cityPaint=Paint(Paint.ANTI_ALIAS_FLAG).apply{textSize=header.size*density;typeface=Typeface.create("sans-serif",Typeface.BOLD)}
-                    val cityInk=Rect();cityPaint.getTextBounds(header.name,0,header.name.length,cityInk)
-                    val cityBottom=header.baseline*density+cityInk.bottom
-                    val stampBottom=stamp.baseline+stampInk.bottom
-                    File(folder(),"native-header-$w-$h.json").writeText(JSONObject().put("header",header.toString()).put("density",density).put("stamp_text",stamp.text).put("native_text_size",stamp.textSize).put("native_ink",stampInk.toString()).put("right_dp",(stamp.paddingLeft+stampInk.right)/density).put("bottom_delta_dp",(stampBottom-cityBottom)/density).put("ellipsis",stamp.layout.getEllipsisCount(0)).toString(2))
-                    val b=Bitmap.createBitmap(pw,ph,Bitmap.Config.ARGB_8888);root.draw(Canvas(b));output("native-large-${w}x$h.png",b);b.recycle()
-                    assertTrue("City/time glyph bottoms must align, delta=${(stampBottom-cityBottom)/density}",abs(stampBottom-cityBottom)<1.2f*density)
-                    assertTrue("Timestamp complete: ${stamp.text}; content=${stamp.width-stamp.paddingLeft-stamp.paddingRight}, measured=${stamp.paint.measureText(stamp.text.toString())}, size=${stamp.textSize}, header=$header",stamp.layout.getEllipsisCount(0)==0)
-                    assertTrue("Timestamp right=${(stamp.paddingLeft+stampInk.right)/density}, expected=${w-18}, header=$header",abs((stamp.paddingLeft+stampInk.right)/density-(w-18))<1.2f)
+                    val pw=(w*density*hostScale).toInt();val ph=(h*density*hostScale).toInt()
+                    root.measure(View.MeasureSpec.makeMeasureSpec(pw,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(ph,View.MeasureSpec.EXACTLY));root.layout(0,0,pw,ph)
+                    File(folder(),"native-header-$w-$h-$hostScale.json").writeText(JSONObject().put("host_scale",hostScale).put("timestamp",stamp.label).put("city_ink",cityInk.toString()).put("timestamp_ink",stamp.bounds.toString()).put("right_dp",stamp.bounds.right).put("bottom_delta_dp",stamp.bounds.bottom-cityInk.bottom).put("ellipsis",false).toString(2))
+                    val b=Bitmap.createBitmap(pw,ph,Bitmap.Config.ARGB_8888);root.draw(Canvas(b));output("native-large-${w}x$h-$hostScale.png",b);b.recycle()
                 }
             }
         }

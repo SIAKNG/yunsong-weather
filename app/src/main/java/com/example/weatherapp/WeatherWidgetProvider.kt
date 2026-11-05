@@ -84,6 +84,8 @@ internal object WeatherWidgets {
             val density=c.resources.displayMetrics.density
             setViewPadding(R.id.widgetEditArea,(header.stampX*density).toInt(),(header.stampTop*density).toInt(),
                 ((width-header.stampX-header.stampWidth).coerceAtLeast(0f)*density).toInt(),0)
+            // The 4x4 timestamp scales with its image; launchers may resize bitmaps and text differently.
+            if(kind=="large") setViewVisibility(R.id.widgetEditArea,android.view.View.GONE)
             if(WeatherInfoWidgetRenderer.supports(kind)) {
                 setViewVisibility(R.id.widgetEditArea,android.view.View.GONE)
                 setContentDescription(R.id.widgetImage,WeatherInfoWidgetRenderer.description(c,kind,data,
