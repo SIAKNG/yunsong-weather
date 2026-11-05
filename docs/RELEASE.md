@@ -1,6 +1,6 @@
 # 发布与签名
 
-公开工程只构建 `userApi`，不含内置 API 版或签名私钥。
+发布安装包使用 `userApi` 构建任务，签名私钥不随源码分发。
 执行 `:app:assembleUserApiRelease` 后，在本机使用 Android SDK 的 `zipalign`、`apksigner` 完成对齐验证和签名。
 保持今后更新的应用包名及签名证书不变，并递增 `versionCode`。
 
