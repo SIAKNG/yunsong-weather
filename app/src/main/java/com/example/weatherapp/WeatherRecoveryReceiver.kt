@@ -26,11 +26,11 @@ object WeatherRecoveryAlarm {
             alarm.cancel(pending); prefs.edit().remove("next").apply(); return
         }
         val now = System.currentTimeMillis()
-        val at = now + 15 * 60_000L
+        val at = WeatherReminderTiming.recoveryAt(now, prefs.getLong("next", 0L), 15 * 60_000L, replace)
         // A package replace can leave this preference behind while Android removes the
         // corresponding alarm. Re-register the stable PendingIntent during every
         // reconciliation instead of trusting the cached timestamp.
-        alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
+        WeatherAlarmCompat.schedule(context, at, pending, exact = false)
         prefs.edit().putLong("next", at).apply()
     }
 

@@ -3,4 +3,24 @@
     <string name="app_version_label">版本 %1$s</string>
     <string name="icon_source_public_about_text">当前为公开源码构建：天气图标使用程序独立绘制的简化图形，不包含原第三方 SVG。\n\n维护者个人构建可选用的原天气图标来自 iconfont（阿里巴巴矢量图标库），作者为桑榆菲碗：\nhttps://www.iconfont.cn/collections/detail?cid=53861\n\n原图标不在公开工程中，也不按项目 GPL 重新授权。公开代码与简化图形按项目许可证提供；其他素材保留其适用声明。</string>
     <string name="icon_source_about_text">天气图标来源：iconfont · 阿里巴巴矢量图标库\n作者：桑榆菲碗\nhttps://www.iconfont.cn/collections/detail?cid=53861\n\n图标版权及使用条件由原作者保留，不因本项目代码采用 GPL-3.0 而重新授权；具体使用范围请以原作者的授权说明为准。</string>
+    <string name="widget_compact_name">云松天气 · 1×2 实况</string>
+    <string name="widget_square_name">云松天气 · 2×2 当前天气</string>
+    <string name="widget_wide_name">云松天气 · 2×4 小时预报</string>
+    <string name="widget_large_name">云松天气 · 4×4 天气概览</string>
+    <string name="widget_compact_description">精简查看城市、当前与体感温度、天气和更新时间</string>
+    <string name="widget_square_description">当前天气、体感和当日高低温</string>
+    <string name="widget_wide_description">当前天气与未来六小时预报</string>
+    <string name="widget_large_description">当前天气、未来六小时及未来六天高低温</string>
+    <string name="widget_weekly_name">云松天气 · 2×4 五日预报</string>
+    <string name="widget_weekly_description">当前天气及未来五天天气与高低温</string>
+    <string name="widget_air_name">云松天气 · 2×2 空气质量</string>
+    <string name="widget_air_description">当前AQI与空气等级</string>
+    <string name="widget_rain_name">云松天气 · 2×2 未来降雨</string>
+    <string name="widget_rain_description">未来六小时降水概率</string>
+    <string name="widget_rain_trend_name">云松天气 · 2×4 降雨趋势</string>
+    <string name="widget_rain_trend_description">未来六小时降水趋势</string>
+    <string name="widget_cities_name">云松天气 · 2×4 多城天气</string>
+    <string name="widget_cities_description">两座或三座城市的天气、实时体感与当日高低温</string>
+    <string name="widget_daily_summary_name">云松天气 · 4×4 今日概览</string>
+    <string name="widget_daily_summary_description">当天气温体感与环境范围、峰值及建议</string>
 </resources>

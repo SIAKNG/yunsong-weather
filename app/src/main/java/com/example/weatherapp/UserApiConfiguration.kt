@@ -99,6 +99,7 @@ object UserApiConfiguration {
         cachedBlob = null
         cachedConfig = null
         WeatherCache.clearCaiyun(context)
+        WeatherWidgets.render(context)
         context.getSharedPreferences("city_summary_cache", Context.MODE_PRIVATE).edit().clear().apply()
         context.getSharedPreferences("qweather_life_advice_v1", Context.MODE_PRIVATE).edit().clear().apply()
         WeatherSettings.resetCaiyunMinutelyCapability(context)

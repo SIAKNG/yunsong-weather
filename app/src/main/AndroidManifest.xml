@@ -123,6 +123,61 @@
                 <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
             </intent-filter>
         </receiver>
+        <activity android:name=".WeatherWidgetActivity" android:label="编辑天气小组件" android:exported="true" android:windowSoftInputMode="adjustResize">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" /></intent-filter>
+        </activity>
+        <receiver android:name=".WeatherWidgetRecoveryReceiver" android:exported="false" />
+        <receiver android:name=".WeatherWidgetProvider" android:exported="false" />
+        <receiver android:name=".WeatherCompactWidget" android:exported="false" android:label="@string/widget_compact_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/weather_widget_compact" />
+            <meta-data android:name="com.example.weatherapp.WIDGET_TEMPLATE" android:value="compact" />
+        </receiver>
+        <receiver android:name=".WeatherSquareWidget" android:exported="false" android:label="@string/widget_square_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/weather_widget_square" />
+            <meta-data android:name="com.example.weatherapp.WIDGET_TEMPLATE" android:value="square" />
+        </receiver>
+        <receiver android:name=".WeatherWideWidget" android:exported="false" android:label="@string/widget_wide_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/weather_widget_wide" />
+            <meta-data android:name="com.example.weatherapp.WIDGET_TEMPLATE" android:value="wide" />
+        </receiver>
+        <receiver android:name=".WeatherLargeWidget" android:exported="false" android:label="@string/widget_large_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/weather_widget_large" />
+            <meta-data android:name="com.example.weatherapp.WIDGET_TEMPLATE" android:value="large" />
+        </receiver>
+        <receiver android:name=".WeatherWeeklyWidget" android:exported="false" android:label="@string/widget_weekly_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/weather_widget_weekly" />
+            <meta-data android:name="com.example.weatherapp.WIDGET_TEMPLATE" android:value="weekly" />
+        </receiver>
+        <receiver android:name=".WeatherAirWidget" android:exported="false" android:label="@string/widget_air_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/weather_widget_air" />
+            <meta-data android:name="com.example.weatherapp.WIDGET_TEMPLATE" android:value="air" />
+        </receiver>
+        <receiver android:name=".WeatherRainWidget" android:exported="false" android:label="@string/widget_rain_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/weather_widget_rain" />
+            <meta-data android:name="com.example.weatherapp.WIDGET_TEMPLATE" android:value="rain" />
+        </receiver>
+        <receiver android:name=".WeatherRainTrendWidget" android:exported="false" android:label="@string/widget_rain_trend_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/weather_widget_rain_trend" />
+            <meta-data android:name="com.example.weatherapp.WIDGET_TEMPLATE" android:value="rain_trend" />
+        </receiver>
+        <receiver android:name=".WeatherCitiesWidget" android:exported="false" android:label="@string/widget_cities_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/weather_widget_cities" />
+            <meta-data android:name="com.example.weatherapp.WIDGET_TEMPLATE" android:value="cities" />
+        </receiver>
+        <receiver android:name=".WeatherDailySummaryWidget" android:exported="false" android:label="@string/widget_daily_summary_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/weather_widget_daily_summary" />
+            <meta-data android:name="com.example.weatherapp.WIDGET_TEMPLATE" android:value="daily_summary" />
+        </receiver>
     </application>
 
 </manifest>

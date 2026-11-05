@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+ android:minWidth="250dp" android:minHeight="100dp" android:targetCellWidth="4" android:targetCellHeight="2"
+ android:widgetFeatures="reconfigurable|configuration_optional" android:resizeMode="none" android:updatePeriodMillis="0"
+ android:initialLayout="@layout/weather_widget" android:previewImage="@drawable/widget_preview_rain_trend"
+ android:configure="com.example.weatherapp.WeatherWidgetActivity" android:widgetCategory="home_screen"
+ android:description="@string/widget_rain_trend_description" />

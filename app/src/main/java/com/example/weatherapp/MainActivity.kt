@@ -102,6 +102,7 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
     private val firstApiConfiguration = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         requestInitialPermissions()
     }
+    private var explicitWidgetEntry = false
     private val selectedCityPrefKey = "selected_city_key"
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -199,10 +200,12 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
                 cityPages.add(0, loc)
             }
             bindCityPager()
-            val savedSelection = prefs.getString(selectedCityPrefKey, null)
-            cityPages.indexOfFirst { it.selectionKey() == savedSelection }
-                .takeIf { it >= 0 }
-                ?.let { target -> pager.post { pager.setCurrentItem(target, false) } }
+            val widgetId=intent.getIntExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_ID,-1)
+            val widgetCity=if(widgetId>=0) WeatherWidgetStore.city(this,widgetId) else null
+            explicitWidgetEntry = widgetCity != null
+            val target = widgetCity?.let { city -> cityPages.indexOfFirst { WeatherWidgetPolicy.sameCity(it, city) } }
+                ?.takeIf { it >= 0 } ?: WeatherHomeSelection.defaultIndex(cityPages)
+            pager.setCurrentItem(target, false)
         }
 
         // 冷启动逐项检查定位、通知、后台定位和精确闹钟。定位获准后立即更新当前位置；
@@ -211,6 +214,16 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
             if (configure && BuildConfig.USER_CONFIGURABLE) firstApiConfiguration.launch(Intent(this, ApiConfigurationActivity::class.java))
             else requestInitialPermissions()
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val id=intent.getIntExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_ID,-1)
+        val city=if(id>=0) WeatherWidgetStore.city(this,id) else null
+        val index=cityPages.indexOfFirst{city!=null && WeatherWidgetPolicy.sameCity(it,city)}
+        explicitWidgetEntry = index >= 0
+        if(index>=0 && ::pager.isInitialized) pager.setCurrentItem(index,false)
     }
 
     private fun requestInitialPermissions() {
@@ -240,6 +253,12 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
         val session = WeatherForegroundSession.current
         val sameForeground = session == lastForegroundSession
         lastForegroundSession = session
+        // A true app entry resets to location/first city. Internal detail/settings returns do not.
+        // A direct widget click is an explicit city request and takes precedence once.
+        if (!sameForeground && !explicitWidgetEntry && cityPages.isNotEmpty()) {
+            pager.setCurrentItem(WeatherHomeSelection.defaultIndex(cityPages), false)
+        }
+        explicitWidgetEntry = false
         if (returningFromWeatherCard && sameForeground) {
             returningFromWeatherCard = false
             wasStopped = false
@@ -384,6 +403,7 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
             arr.put(o)
         }
         prefs.edit().putString("cities", arr.toString()).apply()
+        WeatherWidgets.render(this)
     }
 
     private fun loadCities(): ArrayList<CityPage> {

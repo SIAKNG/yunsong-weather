@@ -12,6 +12,9 @@ class WeatherBootReceiver : BroadcastReceiver() {
         WeatherRecoveryAlarm.schedule(context, replace = true)
         WeatherNotificationCenter.updateSchedules(context)
         WeatherBackgroundScheduler.schedule(context)
+        WeatherReminderPreparation.request(context)
+        WeatherWidgets.restore(context)
+        WeatherWidgets.refresh(context,false)
     }
 
     companion object {

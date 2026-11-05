@@ -41,18 +41,14 @@ object WeatherRiskRecoveryAlarm {
         }
         val now = System.currentTimeMillis()
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val at = now + INTERVAL_MS
+        val at = WeatherReminderTiming.recoveryAt(now, prefs.getLong(KEY_NEXT, 0L), INTERVAL_MS, replace)
         val alarm = context.getSystemService(AlarmManager::class.java)
         val pending = pendingIntent(context)
         // The persisted time is only a UI/diagnostic hint, not proof that Android still
         // owns the alarm. Package updates and some vendor cleanup paths remove alarms
         // while keeping SharedPreferences, so every scheduler reconciliation re-registers
         // this one stable PendingIntent.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarm.canScheduleExactAlarms()) {
-            alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
-        } else {
-            alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
-        }
+        WeatherAlarmCompat.schedule(context, at, pending)
         prefs.edit().putLong(KEY_NEXT, at).apply()
     }
 
@@ -87,6 +83,10 @@ class TemperatureChangeReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         TemperatureChangeReminderAlarm.schedule(context, replace = true)
         if (TemperatureChangeReminderAlarm.isEnabled(context)) {
+            // Local, bounded work runs inside the alarm receiver, before WorkManager/network.
+            WeatherCityStore.currentLocationCity(context)?.let { WeatherReminderPreparation.prepareFromCache(context, it) }
+            WeatherNotificationCenter.reconcilePendingTemperature(context)
+            WeatherReminderPreparation.request(context)
             WeatherBackgroundScheduler.enqueueRiskCheck(context, expedited = true)
         }
     }
@@ -117,11 +117,7 @@ object TemperatureChangeReminderAlarm {
         val pending = pendingIntent(context)
         // As with the 15-minute recovery alarm, do not treat a surviving preference as
         // evidence that the operating system retained the actual alarm after an update.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarm.canScheduleExactAlarms()) {
-            alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
-        } else {
-            alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
-        }
+        WeatherAlarmCompat.schedule(context, at, pending)
         prefs.edit().putLong(KEY_NEXT, at).apply()
     }
 

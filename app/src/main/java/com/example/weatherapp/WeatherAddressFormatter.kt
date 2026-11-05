@@ -20,15 +20,21 @@ object WeatherAddressFormatter {
         }.replace(Regex("(?:[0-9０-９]+(?:号|栋|幢|单元|室|楼)).*$"), "").trim()
         val detail = listOf(locality, road).filter(String::isNotBlank).distinct()
             .let { if(it.size == 2 && it[1].startsWith(it[0])) listOf(it[1]) else it }.joinToString(" ")
-        return compact(detail, city.orEmpty())
+        return if (detail.isBlank()) this.city(city.orEmpty()) else compact(detail)
     }
-    fun label(page: CityPage): String = if (page.isCurrentLocation)
-        compact(page.locationDetail, page.name)
-    else city(page.name)
-    fun city(name: String): String = compact(if (name.endsWith("市") || name.endsWith("区") || name.endsWith("县") || name.endsWith("旗")) name else "${name}市")
+    fun label(page: CityPage): String = city(
+        if (page.isCurrentLocation) page.locationDetail.ifBlank { page.name } else page.name
+    )
+    /** A standalone Chinese city label drops its administrative suffix; detailed addresses do not. */
+    fun city(name: String): String {
+        val clean = name.replace(Regex("\\s+"), " ").trim()
+        val standalone = clean.endsWith("市") && clean.matches(Regex("^[\\p{IsHan}·]{3,}$")) &&
+            !clean.contains(Regex("[省区县旗街路号弄村\\s，,/]"))
+        return compact(if (standalone) clean.dropLast(1) else clean)
+    }
     fun bind(view: TextView, raw: String) {
         view.setSingleLine(true)
         view.ellipsize = TextUtils.TruncateAt.END
-        view.text = compact(raw)
+        view.text = city(raw)
     }
 }

@@ -272,7 +272,7 @@ class CityManageActivity : AppCompatActivity() {
         left.addView(
             TextView(this).apply {
                 // 当前定位：直接显示详细地址；其他城市显示城市名
-                text = if (item.isLoc && item.detail.isNotEmpty()) item.detail else item.name
+                text = if (item.isLoc && item.detail.isNotEmpty()) item.detail else WeatherAddressFormatter.city(item.name)
                 setTextColor(nameColor)
                 textSize = 18f
                 setTypeface(null, android.graphics.Typeface.BOLD)
@@ -475,7 +475,7 @@ class CityManageActivity : AppCompatActivity() {
                     val tv = col.getChildAt(k) as? TextView ?: continue
                     when (tv.tag) {
                         "name" -> {
-                            tv.text = if (item.isLoc && item.detail.isNotEmpty()) item.detail else item.name
+                            tv.text = if (item.isLoc && item.detail.isNotEmpty()) item.detail else WeatherAddressFormatter.city(item.name)
                             tv.setTextColor(nameColor)
                         }
                         "temp" -> {
@@ -805,7 +805,7 @@ class CityManageActivity : AppCompatActivity() {
                 })
             }
             val tv = card.getChildAt(0) as TextView
-            tv.text = if (city.province.isNotBlank()) "${city.name}（${city.province}）" else city.name
+            tv.text = if (city.province.isNotBlank()) "${WeatherAddressFormatter.city(city.name)}（${city.province}）" else WeatherAddressFormatter.city(city.name)
             card.setOnClickListener { source -> pickCity(city, source) }
             return card
         }

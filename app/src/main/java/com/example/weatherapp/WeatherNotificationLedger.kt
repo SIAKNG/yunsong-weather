@@ -323,6 +323,7 @@ object WeatherChangeNotificationLedger {
 object TemperatureChangeDeliveryLedger {
     private const val PREFS = "temperature_change_delivery_v1"
     private const val PREFIX = "pending."
+    private const val DECISION = "decision."
 
     data class Pending(
         val key: String,
@@ -331,7 +332,10 @@ object TemperatureChangeDeliveryLedger {
         val severity: Int,
         val title: String,
         val detail: String,
-        val delivered: Boolean
+        val delivered: Boolean,
+        val source: String = "",
+        val cityKey: String = "",
+        val dataAt: Long = 0L
     ) {
         fun encode(): String = JSONObject().apply {
             put("id", notificationId)
@@ -340,17 +344,24 @@ object TemperatureChangeDeliveryLedger {
             put("title", title)
             put("detail", detail)
             put("delivered", delivered)
+            put("source", source)
+            put("city", cityKey)
+            put("dataAt", dataAt)
         }.toString()
     }
 
     @Synchronized
-    fun stage(context: Context, event: WeatherChangeEvent) {
+    fun stage(context: Context, event: WeatherChangeEvent, dataAt: Long = System.currentTimeMillis()) {
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         pruneExpired(prefs)
         val storageKey = PREFIX + event.key
         val old = parse(event.key, prefs.getString(storageKey, null))
+        val decisionKey = DECISION + WeatherWidgetPolicy.sourceKey(context) + "|" + event.key
+        val decisionValue = prefs.getLong(decisionKey, 0L)
+        if (dataAt < kotlin.math.abs(decisionValue) || (dataAt == kotlin.math.abs(decisionValue) && decisionValue < 0L)) return
         // 已成功的同一预报日绝不能因后续刷新再次退回“待投递”。
         if (old?.delivered == true) return
+        if (old != null && old.source == WeatherWidgetPolicy.sourceKey(context) && old.dataAt > dataAt) return
         val next = Pending(
             key = event.key,
             notificationId = event.notificationId,
@@ -358,9 +369,12 @@ object TemperatureChangeDeliveryLedger {
             severity = event.severity,
             title = event.title,
             detail = event.detail,
-            delivered = false
+            delivered = false,
+            source = WeatherWidgetPolicy.sourceKey(context),
+            cityKey = WeatherNotificationLedger.cityKey(event.city),
+            dataAt = dataAt
         )
-        prefs.edit().putString(storageKey, next.encode()).apply()
+        prefs.edit().putString(storageKey, next.encode()).putLong(decisionKey, dataAt).commit()
     }
 
     /** 仅在通知管理器实际接受后才把对应事件改为已送达。 */
@@ -368,6 +382,7 @@ object TemperatureChangeDeliveryLedger {
     fun deliverDue(
         context: Context,
         now: Long = System.currentTimeMillis(),
+        accept: (Pending) -> Boolean = { true },
         deliver: (Pending) -> Boolean
     ): Int {
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -375,15 +390,39 @@ object TemperatureChangeDeliveryLedger {
         var delivered = 0
         prefs.all.keys.filter { it.startsWith(PREFIX) }.forEach { storageKey ->
             val pending = parse(storageKey.removePrefix(PREFIX), prefs.getString(storageKey, null)) ?: return@forEach
-            if (pending.delivered || !WeatherReminderPolicy.isTemperatureReminderDue(pending.forecastAtMillis, now)) {
+            if (!accept(pending) || pending.delivered || !WeatherReminderPolicy.isTemperatureReminderDue(pending.forecastAtMillis, now)) {
                 return@forEach
             }
             if (deliver(pending)) {
-                prefs.edit().putString(storageKey, pending.copy(delivered = true).encode()).apply()
+                prefs.edit().putString(storageKey, pending.copy(delivered = true).encode()).commit()
                 delivered++
             }
         }
         return delivered
+    }
+
+    @Synchronized
+    fun removeUndelivered(context: Context, city: CityPage, date: java.time.LocalDate, dataAt: Long = System.currentTimeMillis()) {
+        val at = date.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val key = WeatherChangeEvent(city, "temperature", at, 1, "", "").key
+        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val existing = parse(key, p.getString(PREFIX + key, null))
+        val decision = DECISION + WeatherWidgetPolicy.sourceKey(context) + "|" + key
+        if (dataAt < kotlin.math.abs(p.getLong(decision, 0L))) return
+        p.edit().apply {
+            putLong(decision, -dataAt)
+            if (existing?.delivered == false && existing.dataAt <= dataAt) remove(PREFIX + key)
+        }.commit()
+    }
+
+    @Synchronized
+    fun discardUnsent(context: Context) {
+        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val edit = p.edit()
+        p.all.keys.filter { it.startsWith(PREFIX) }.forEach { key ->
+            if (parse(key.removePrefix(PREFIX), p.getString(key, null))?.delivered != true) edit.remove(key)
+        }
+        edit.commit()
     }
 
     @Synchronized
@@ -395,6 +434,10 @@ object TemperatureChangeDeliveryLedger {
     private fun pruneExpired(prefs: android.content.SharedPreferences, now: Long = System.currentTimeMillis()) {
         val editor = prefs.edit()
         var changed = false
+        prefs.all.keys.filter { it.startsWith(DECISION) }.forEach { key ->
+            val at = key.substringAfterLast('|').toLongOrNull()?.times(3_600_000L)
+            if (at == null || now - at > 2L * 86_400_000L) { editor.remove(key); changed = true }
+        }
         prefs.all.keys.filter { it.startsWith(PREFIX) }.forEach { storageKey ->
             val pending = parse(storageKey.removePrefix(PREFIX), prefs.getString(storageKey, null))
             val forecastDate = pending?.forecastAtMillis?.let {
@@ -418,7 +461,10 @@ object TemperatureChangeDeliveryLedger {
             severity = value.getInt("severity"),
             title = value.getString("title"),
             detail = value.getString("detail"),
-            delivered = value.optBoolean("delivered", false)
+            delivered = value.optBoolean("delivered", false),
+            source = value.optString("source"),
+            cityKey = value.optString("city"),
+            dataAt = value.optLong("dataAt", 0L)
         )
     }.getOrNull()
 }
@@ -430,10 +476,10 @@ object DailyForecastDeliveryLedger {
         WeatherReminderPolicy.window(now).let { window ->
             if (window.tomorrow == tomorrow) window.key else "inactive:$tomorrow:${window.issuedDate}"
         }
-    fun delivered(context: Context, tomorrow: Boolean): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(key(tomorrow), false)
-    fun markDelivered(context: Context, tomorrow: Boolean) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(key(tomorrow), true).apply()
+    fun delivered(context: Context, tomorrow: Boolean, now: Long = System.currentTimeMillis()): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(key(tomorrow, now), false)
+    fun markDelivered(context: Context, tomorrow: Boolean, now: Long = System.currentTimeMillis()) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(key(tomorrow, now), true).commit()
     }
     fun clear(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()

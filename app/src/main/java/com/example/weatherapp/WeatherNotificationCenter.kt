@@ -138,7 +138,7 @@ object WeatherNotificationCenter {
             else -> false
         }
         if (!enabled) {
-            if (event.type == "temperature") TemperatureChangeDeliveryLedger.clear(context)
+            if (event.type == "temperature") TemperatureChangeDeliveryLedger.discardUnsent(context)
             return
         }
         if (event.type == "temperature") {
@@ -160,14 +160,18 @@ object WeatherNotificationCenter {
     }
 
     /** 风险任务每次运行都会调用，直至前一晚发现的变温事件成功投递。 */
-    fun reconcilePendingTemperature(context: Context) {
+    fun reconcilePendingTemperature(context: Context, now: Long = System.currentTimeMillis()) {
         ensureChannels(context)
         if (!WeatherSettings.temperatureChangeReminder(context)) {
-            TemperatureChangeDeliveryLedger.clear(context)
+            TemperatureChangeDeliveryLedger.discardUnsent(context)
             return
         }
         if (!canNotifyChannel(context, CHANNEL_CHANGE)) return
-        TemperatureChangeDeliveryLedger.deliverDue(context) { pending ->
+        val city = WeatherCityStore.currentLocationCity(context) ?: return
+        val source = WeatherWidgetPolicy.sourceKey(context)
+        TemperatureChangeDeliveryLedger.deliverDue(context, now, accept = {
+            it.source == source && it.cityKey == WeatherNotificationLedger.cityKey(city)
+        }) { pending ->
             notify(context, pending.notificationId, CHANNEL_CHANGE, pending.title, pending.detail, alertAgain = true)
         }
     }
@@ -196,35 +200,38 @@ object WeatherNotificationCenter {
         notify(context, RAIN_NOTIFICATION_ID, CHANNEL_RAIN, "降雨提醒", "$summary $peak".take(260))
     }
 
-    /** 每日提醒使用已缓存数据立即送达，随后后台刷新只会静默更新。 */
+    /** 每日提醒优先使用提前准备的本机内容，系统接受后不重复投递。 */
     @Synchronized
-    fun postDailyForecast(context: Context, tomorrow: Boolean): Boolean {
+    fun postDailyForecast(context: Context, tomorrow: Boolean, now: Long = System.currentTimeMillis()): Boolean {
         ensureChannels(context)
         updateSchedules(context)
-        if (WeatherReminderPolicy.window().tomorrow != tomorrow) return true
-        if (DailyForecastDeliveryLedger.delivered(context, tomorrow)) return true
+        val window = WeatherReminderPolicy.window(now)
+        if (window.tomorrow != tomorrow) return true
+        if (DailyForecastDeliveryLedger.delivered(context, tomorrow, now)) return true
         if (!WeatherSettings.dailyForecastReminder(context) || !canNotifyChannel(context, CHANNEL_FORECAST)) {
             WeatherReminderDiagnostics.record(context, "每日预报", "未投递", "通知权限或每日预报开关未开启")
             return false
         }
-        val page = WeatherCityStore.currentLocationCity(context)
-        if (page == null) {
-            WeatherReminderDiagnostics.record(context, "每日预报", "未投递", "暂无已保存的当前位置")
+        val page = WeatherCityStore.currentLocationCity(context) ?: return false
+        val source = WeatherWidgetPolicy.sourceKey(context)
+        val unit = WeatherSettings.tempUnit(context)
+        // No network here. The preparation jobs and normal cache writes build this content early.
+        WeatherReminderPreparation.prepareFromCache(context, page, now)
+        val message = WeatherReminderPreparation.message(context, page, window.forecastDate, now)
+        if (message == null) {
+            WeatherReminderDiagnostics.record(context, "每日预报", "待补发", "缺少有效预备内容，联网后重试")
             return false
         }
-        val message = loadDailyMessage(context, page, if (tomorrow) 1 else 0) ?: return false
-        val sent = notify(
-            context = context,
-            id = if (tomorrow) TOMORROW_NOTIFICATION_ID else TODAY_NOTIFICATION_ID,
-            channelId = CHANNEL_FORECAST,
-            title = "${page.name}${if (WeatherReminderPolicy.window().forecastDate == java.time.LocalDate.now()) " 今日" else " 明日"}天气",
-            text = message,
-            onlyAlertOnce = false
-        )
-        if (!sent) return false
-        DailyForecastDeliveryLedger.markDelivered(context, tomorrow)
-        WeatherReminderDiagnostics.record(context, "每日预报", "已投递", if (tomorrow) "22:00 次日预报" else "07:00 当日预报")
-        return true
+        if (source != WeatherWidgetPolicy.sourceKey(context) || unit != WeatherSettings.tempUnit(context) ||
+            WeatherCityStore.currentLocationCity(context)?.let { WeatherWidgetPolicy.sameCity(it, page) } != true) return false
+        val sent = notify(context, if (tomorrow) TOMORROW_NOTIFICATION_ID else TODAY_NOTIFICATION_ID,
+            CHANNEL_FORECAST, "${WeatherAddressFormatter.city(page.name)}${if (window.forecastDate == java.time.Instant.ofEpochMilli(now).atZone(java.time.ZoneId.systemDefault()).toLocalDate()) " 今日" else " 明日"}天气",
+            message)
+        if (sent) {
+            DailyForecastDeliveryLedger.markDelivered(context, tomorrow, now)
+            WeatherReminderDiagnostics.record(context, "每日预报", "已投递", "使用本机已准备内容")
+        }
+        return sent
     }
 
     /** 设置页诊断按钮：不依赖天气接口，直接验证四个通道是否能显示。 */
@@ -240,6 +247,7 @@ object WeatherNotificationCenter {
     }
 
     @Synchronized fun updateSchedules(context: Context) {
+        WeatherReminderPreparation.schedule(context)
         val alarm = context.getSystemService(AlarmManager::class.java)
         val shouldSchedule = WeatherSettings.dailyForecastReminder(context)
         if (!shouldSchedule) {
@@ -288,6 +296,8 @@ object WeatherNotificationCenter {
             append("下次风险兜底：").append(if (riskAt > System.currentTimeMillis()) formatter.format(Date(riskAt)) else "未排程").append('\n')
             append("下次每日预报：07:00 ").append(formatter.format(Date(nextDailyMillis(7))))
             append("；22:00 ").append(formatter.format(Date(nextDailyMillis(22)))).append('\n')
+            append(WeatherReminderPreparation.summary(context)).append('\n')
+            append("21:00变温提醒：优先投递已准备内容，失败后补发").append('\n')
             append(WeatherReminderDiagnostics.summary(context))
         }
     }
@@ -302,11 +312,7 @@ object WeatherNotificationCenter {
     private fun scheduleDaily(context: Context, alarm: AlarmManager, today: Boolean, hour: Int) {
         val pending = dailyForecastPendingIntent(context, today)
         val triggerAt = nextDailyMillis(hour)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarm.canScheduleExactAlarms()) {
-            alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending)
-        } else {
-            alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending)
-        }
+        WeatherAlarmCompat.schedule(context, triggerAt, pending)
     }
 
     private fun cancelDaily(context: Context, alarm: AlarmManager, today: Boolean) {
@@ -335,34 +341,6 @@ object WeatherNotificationCenter {
             set(Calendar.MILLISECOND, 0)
             if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
         }.timeInMillis
-    }
-
-    private fun loadDailyMessage(context: Context, page: CityPage, index: Int): String? {
-        val primary = WeatherCache.loadCaiyun(context, page)?.result
-        val targetDate = WeatherReminderPolicy.window().forecastDate.toString()
-        return if (primary?.daily?.temperature.orEmpty().none { it.date?.take(10) == targetDate }) {
-            val bundle = WeatherCache.loadQWeather(context, page)
-            val daily = bundle?.daily?.firstOrNull { it.date.take(10) == targetDate } ?: return null
-            val range = listOfNotNull(daily.low?.let { WeatherSettings.tempText(context, it) }, daily.high?.let { WeatherSettings.tempText(context, it) })
-                .joinToString("–")
-            "${WeatherText.skyconToText(daily.skycon)}${if (range.isBlank()) "" else "，${range}"}。${tomorrowAdvice(daily.precipProb ?: 0.0)}"
-        } else {
-            val result = primary ?: return null
-            val daily = result.daily ?: return null
-            val targetDate = WeatherReminderPolicy.window().forecastDate.toString()
-            val weather = daily.temperature?.firstOrNull { it.date?.take(10) == targetDate } ?: return null
-            val range = listOfNotNull(weather.min?.let { WeatherSettings.tempText(context, it) }, weather.max?.let { WeatherSettings.tempText(context, it) })
-                .joinToString("–")
-            val skycon = daily.skycon?.firstOrNull { it.date?.take(10) == targetDate }?.value
-            val precip = daily.precipitation?.firstOrNull { it.date?.take(10) == targetDate }?.probability ?: 0.0
-            "${WeatherText.skyconToText(skycon)}${if (range.isBlank()) "" else "，${range}"}。${tomorrowAdvice(precip)}"
-        }
-    }
-
-    private fun tomorrowAdvice(precipProbability: Double): String = when {
-        precipProbability >= 50.0 -> "有较高降雨可能，提前备好雨具并留意路面湿滑。"
-        precipProbability >= 20.0 -> "可能有短时降雨，出门建议随身带伞。"
-        else -> "天气较平稳，按温差增减衣物并适当补水。"
     }
 
     private fun notify(

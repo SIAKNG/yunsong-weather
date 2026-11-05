@@ -118,12 +118,14 @@ object WeatherSettings {
 
     fun setTempUnit(c: Context, v: String) {
         prefs(c).edit().putString("temp_unit", v).apply()
+        WeatherWidgets.render(c)
     }
 
     fun windUnit(c: Context): String = prefs(c).getString("wind_unit", WIND_KMH) ?: WIND_KMH
 
     fun setWindUnit(c: Context, v: String) {
         prefs(c).edit().putString("wind_unit", v).apply()
+        WeatherWidgets.render(c)
     }
 
     fun pressureUnit(c: Context): String =

@@ -280,6 +280,9 @@ class WeatherSettingsActivity : AppCompatActivity() {
             } }
         }
 
+        findViewById<View>(R.id.btnWeatherWidgets).setOnClickListener {
+            startActivity(Intent(this, WeatherWidgetActivity::class.java))
+        }
         // —— 关于天气 ——
         findViewById<View>(R.id.btnAbout).setOnClickListener {
             startActivity(Intent(this, WeatherAboutActivity::class.java))
@@ -443,6 +446,7 @@ class WeatherSettingsActivity : AppCompatActivity() {
                 return@setOnCheckedChangeListener
             }
             persist(enabled)
+            WeatherReminderPreparation.request(this)
             WeatherNotificationCenter.updateSchedules(this)
             WeatherBackgroundScheduler.schedule(this)
             if (::tvNotificationDiagnostics.isInitialized) refreshNotificationDiagnostics()

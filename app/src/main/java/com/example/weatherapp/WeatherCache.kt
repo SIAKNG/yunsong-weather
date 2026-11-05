@@ -118,6 +118,11 @@ object WeatherCache {
             lifeAdvice=(raw.lifeAdvice as List<QLifeIndex>?).orEmpty(),alerts=(raw.alerts as List<QAlert>?).orEmpty())
     }.getOrNull()
 
+    fun savedAt(context: Context,page: CityPage): Long {
+        val source=if(WeatherSettings.useQWeather(context)) WeatherSettings.SOURCE_QWEATHER else "unified_v3"
+        return context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getLong("${key(context,source,page)}_at",0L)
+    }
+
     private fun save(context: Context, key: String, payload: String) {
         if (payload.length > MAX_PAYLOAD_CHARS) return
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -125,6 +130,8 @@ object WeatherCache {
             .putLong("${key}_at", System.currentTimeMillis())
             .putString("${key}_json", payload)
             .apply()
+        WeatherWidgets.render(context)
+        WeatherReminderPreparation.onCacheSaved(context)
     }
 
     private data class CachedPayload(val payload: String, val ageMs: Long)

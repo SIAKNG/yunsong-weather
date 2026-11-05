@@ -247,7 +247,7 @@ internal class ForecastWeatherPage(
         val rainMetric = when {
             dailyRain != null -> HourlyForecastSummaryMetric(
                 HourlyForecastSummaryKind.RAIN,"降水概率",if(dailyRain==0) "无雨" else "$dailyRain%",periodLabel,
-                if(dailyRain>=30) "出门建议备伞" else "出行留意天气变化",dailyRain/100f,palette.rain)
+                ForecastSummaryAdvice.dailyRain(dailyRain),dailyRain/100f,palette.rain)
             rain.isEmpty() -> HourlyForecastSummaryMetric(
                 HourlyForecastSummaryKind.RAIN, "降水概率", "—", "概率待补充", "出门前留意实时天气", 0f, palette.rain
             )
@@ -261,11 +261,7 @@ internal class ForecastWeatherPage(
                     label = "降水概率",
                     value = "$value%",
                     detail = compactTime(point.time),
-                    advice = when {
-                        value >= 70 -> "建议带伞"
-                        value >= 30 -> "建议带伞"
-                        else -> "常规出行即可"
-                    },
+                    advice = ForecastSummaryAdvice.hourlyRain(value),
                     progress = value / 100f,
                     color = palette.rain
                 )
@@ -284,11 +280,7 @@ internal class ForecastWeatherPage(
                 label = "风力范围",
                 value = "$lowText–$highText",
                 detail = periodLabel,
-                advice = when {
-                    high < 12 -> "风力温和，适合出行"
-                    high < 25 -> "阵风时注意防风"
-                    else -> "风力较强，减少高处停留"
-                },
+                advice = ForecastSummaryAdvice.wind(high),
                 progress = (high / 45.0).toFloat().coerceIn(0f, 1f),
                 color = palette.wind
             )
@@ -305,11 +297,7 @@ internal class ForecastWeatherPage(
                 label = "紫外线峰值",
                 value = "${value.roundToInt()}级",
                 detail = "${ForecastMetricSemanticLabel.uv(value)} · ${compactTime(point.time)}",
-                advice = when {
-                    value <= 2 -> "按需防晒"
-                    value <= 5 -> "基础防晒"
-                    else -> "避免午间暴晒"
-                },
+                advice = ForecastSummaryAdvice.ultraviolet(value),
                 progress = (value / 11.0).toFloat().coerceIn(0f, 1f),
                 color = palette.ultraviolet
             )
@@ -395,13 +383,7 @@ internal class ForecastWeatherPage(
     private fun compactTime(time: Long): String =
         if(day == null) HourlyForecastDetailPolicy.relativeTimeLabel(time).removeSuffix("左右") else SimpleDateFormat("H点",Locale.CHINA).format(Date(time))
 
-    private fun compactAirTravelAdvice(value: Double): String = when {
-        value <= 50 -> "放心出行"
-        value <= 100 -> "日常出行正常"
-        value <= 150 -> "敏感人群少久留"
-        value <= 200 -> "减少户外活动"
-        else -> "尽量减少外出"
-    }
+    private fun compactAirTravelAdvice(value: Double): String = ForecastSummaryAdvice.air(value)
 
     private fun airQualityRangeSummary(best: Double, worst: Double, average: Double): String {
         val bestLevel = AirQualityScale.level(best)

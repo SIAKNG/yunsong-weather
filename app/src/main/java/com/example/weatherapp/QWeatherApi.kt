@@ -144,6 +144,59 @@ object QWeatherApi {
             fetchAlerts(hostOf(it.host), lat, lng, QWeatherJwt.token(it), strict = true)
         }
 
+    /** Risk routes never fetch the full homepage bundle. Failures must remain failures. */
+    fun fetchMinutelyOnlyChecked(context: Context, lat: Double, lng: Double): List<QMinute> =
+        WeatherSettings.legacyQWeatherJwtConfig(context).let {
+            val text = httpGet("${hostOf(it.host)}/v7/minutely/5m?location=${fmt(lng)},${fmt(lat)}&lang=zh", QWeatherJwt.token(it))
+            parseMinutelyResponseChecked(text)
+        }
+
+    fun fetchWindOnlyChecked(context: Context, lat: Double, lng: Double): Double =
+        WeatherSettings.legacyQWeatherJwtConfig(context).let {
+            val text = httpGet("${hostOf(it.host)}/v7/weather/now?location=${fmt(lng)},${fmt(lat)}&lang=zh&unit=m", QWeatherJwt.token(it))
+            val root = JSONObject(text)
+            checkRiskAuthorization(root)
+            if (root.optString("code") != "200" || root.has("error"))
+                throw java.io.IOException("QWeather wind request unsuccessful")
+            root.getJSONObject("now").getString("windSpeed").toDoubleOrNull()
+                ?.takeIf { speed -> speed.isFinite() && speed >= 0.0 }
+                ?: throw java.io.IOException("QWeather wind data invalid")
+        }
+
+    fun fetchDailyOnlyChecked(context: Context, lat: Double, lng: Double): List<QDay> =
+        WeatherSettings.legacyQWeatherJwtConfig(context).let {
+            fetchDaily(hostOf(it.host), lat, lng, QWeatherJwt.token(it), strict = true).also { days ->
+                if (days.isEmpty()) throw java.io.IOException("QWeather daily forecast unavailable")
+            }
+        }
+
+    private fun checkRiskAuthorization(root: JSONObject) {
+        val code = root.optString("code")
+        val errorStatus = root.optJSONObject("error")?.optString("status")
+        if (code == "401" || code == "403" || errorStatus == "401" || errorStatus == "403")
+            throw WeatherRiskAuthorizationFailure()
+    }
+
+    /** An empty/malformed/unauthorized response is not a verified dry forecast. */
+    internal fun parseMinutelyResponseChecked(text: String): List<QMinute> {
+        val root = JSONObject(text)
+        checkRiskAuthorization(root)
+        if (root.optString("code") != "200" || root.has("error"))
+            throw java.io.IOException("QWeather minute request unsuccessful")
+        val rows = root.optJSONArray("minutely")
+            ?: throw java.io.IOException("QWeather minute data missing")
+        if (rows.length() == 0) throw java.io.IOException("QWeather minute data empty")
+        return (0 until rows.length()).map { index ->
+            val row = rows.getJSONObject(index)
+            val time = parseTime(row.getString("fxTime"))
+                ?: throw java.io.IOException("QWeather minute time invalid")
+            val precip = row.getString("precip").toDoubleOrNull()
+                ?.takeIf { it.isFinite() && it >= 0.0 }
+                ?: throw java.io.IOException("QWeather minute amount invalid")
+            QMinute(time, precip, row.optString("type"))
+        }
+    }
+
     /** 生活建议始终单独取和风全量指数，不影响首页当前选择的实况/预报数据源。 */
     fun fetchLifeAdvice(context: Context, lat: Double, lng: Double): List<QLifeIndex> = runCatching {
         val config = WeatherSettings.legacyQWeatherJwtConfig(context)
@@ -303,13 +356,14 @@ object QWeatherApi {
         }
     }
 
-    private fun fetchDaily(base: String, lat: Double, lng: Double, token: String): List<QDay> {
+    private fun fetchDaily(base: String, lat: Double, lng: Double, token: String, strict: Boolean = false): List<QDay> {
         val text = httpGet(
             "$base/weather/v1/daily/${fmt(lat)}/${fmt(lng)}?days=7&lang=zh&localTime=true",
             token
         ) ?: return emptyList()
         return try {
             val root = JSONObject(text)
+            if (strict) checkRiskAuthorization(root)
             val arr = root.optJSONArray("days") ?: return emptyList()
             val out = ArrayList<QDay>(arr.length())
             for (i in 0 until arr.length()) {
@@ -334,6 +388,7 @@ object QWeatherApi {
             }
             out
         } catch (e: Exception) {
+            if (strict) throw e
             emptyList()
         }
     }
@@ -522,6 +577,9 @@ object QWeatherApi {
     internal fun parseAlertsResponse(text: String, strict: Boolean = true): List<QAlert> {
         return try {
             val root = JSONObject(text)
+            if (strict) checkRiskAuthorization(root)
+            if (root.has("error") || (root.has("code") && root.optString("code") != "200"))
+                throw java.io.IOException("QWeather alert request unsuccessful")
             if (root.optJSONObject("metadata")?.optBoolean("zeroResult") == true) return emptyList()
             val arr = root.optJSONArray("alerts") ?: if (strict) throw java.io.IOException("QWeather alerts missing") else return emptyList()
             val out = ArrayList<QAlert>(arr.length())

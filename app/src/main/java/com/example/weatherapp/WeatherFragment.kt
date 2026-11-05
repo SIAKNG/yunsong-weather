@@ -395,6 +395,7 @@ class WeatherFragment : Fragment() {
 
         override fun onPageSelected(position: Int) {
             if (!isAdded) return
+            refreshIndicator()
             setFastGlass(true)
             val selected = (activity as? MainActivity)?.cityList()?.getOrNull(position)
             if (selected != null && matchesPage(selected)) {
@@ -1529,34 +1530,31 @@ class WeatherFragment : Fragment() {
     private fun refreshIndicator() {
         val activity = activity as? MainActivity ?: return
         val cities = activity.cityList()
-        val current = activity.currentPage()
+        // Each retained overlay belongs to its own city, even before ViewPager commits the target.
+        // Switching the address layer at the drag midpoint must switch its dots atomically too.
+        val current = cities.indexOfFirst(::matchesPage).takeIf { it >= 0 } ?: activity.currentPage()
         indicatorContainer.removeAllViews()
 
-        // 定位图标：亮 = 当前页是定位页
-        indicatorContainer.addView(ImageView(requireContext()).apply {
-            setImageResource(R.drawable.ic_location)
-            contentDescription = "定位"
-            layoutParams = LinearLayout.LayoutParams(dp(10f), dp(10f)).apply {
-                marginEnd = dp(2f)
-            }
-            alpha = if (current == 0) 1f else 0.35f
-            setOnClickListener { activity.jumpTo(0) }
-        })
-
-        // 新增城市的小圆点：当前页白色，其余半透明
-        for (i in 1 until cities.size) {
-            val isCurrent = i == current
-            indicatorContainer.addView(View(requireContext()).apply {
+        cities.forEachIndexed { index, city ->
+            val isCurrent = index == current
+            val marker = if (city.isCurrentLocation) ImageView(requireContext()).apply {
+                setImageResource(R.drawable.ic_location)
+                contentDescription = "定位城市"
+                layoutParams = LinearLayout.LayoutParams(dp(10f), dp(10f)).apply { marginEnd = dp(2f) }
+                alpha = if (isCurrent) 1f else .35f
+            } else View(requireContext()).apply {
                 layoutParams = LinearLayout.LayoutParams(dp(6f), dp(6f)).apply {
-                    marginStart = dp(4f)
-                    marginEnd = dp(4f)
+                    marginStart = dp(4f); marginEnd = dp(4f)
                 }
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
                     setColor(if (isCurrent) Color.WHITE else Color.parseColor("#59FFFFFF"))
                 }
-                setOnClickListener { activity.jumpTo(i) }
-            })
+                contentDescription = "城市 ${index + 1}"
+            }
+            marker.isSelected = isCurrent
+            marker.setOnClickListener { activity.jumpTo(index) }
+            indicatorContainer.addView(marker)
         }
 
         // 当前目标滚到可见位置
@@ -2114,7 +2112,7 @@ class WeatherFragment : Fragment() {
             alertContents.add(desc)
             alertTimes.add(formatAlertTime(a.issuedTimeMillis))
             alertCodes.add(a.eventTypeCode)
-            alertLocations.add(if (page.isCurrentLocation) page.locationDetail else page.name)
+            alertLocations.add(WeatherAddressFormatter.label(page))
             alertSources.add(a.senderName)
             alertColors.add(alertColorOf(a))
         }
@@ -2598,7 +2596,7 @@ class WeatherFragment : Fragment() {
                     alertTimes.add(formatAlertTime(a.issuedTimeMillis))
                     alertCodes.add(a.eventTypeCode)
                     alertLocations.add(
-                        if (page.isCurrentLocation) page.locationDetail else page.name
+                        WeatherAddressFormatter.label(page)
                     )
                     alertSources.add(a.senderName)
                     alertColors.add(alertColorOf(a))
@@ -3191,7 +3189,7 @@ class WeatherFragment : Fragment() {
 
     private fun detailNavigationState(metricPoints: List<HourlyMetricPoint> = hourlyMetricPoints.ifEmpty { fallbackMetricPoints() }): DetailNavigationState =
         DetailNavigationState(
-            cityName = if (page.isCurrentLocation) page.locationDetail else page.name,
+            cityName = WeatherAddressFormatter.label(page),
             rankingCityName = page.name,
             metricPoints = metricPoints,
             yesterdayMetricPoints = yesterdayMetricPoints,

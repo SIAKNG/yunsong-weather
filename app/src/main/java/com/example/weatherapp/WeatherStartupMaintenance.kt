@@ -26,7 +26,7 @@ internal object WeatherStartupMaintenance {
                 // Keep the previous order. Delivery paths also ensure their own channels.
                 WeatherNotificationCenter.ensureChannels(app);channels=SystemClock.elapsedRealtime()-start
                 start=SystemClock.elapsedRealtime();WeatherNotificationCenter.updateSchedules(app);alarms=SystemClock.elapsedRealtime()-start
-                start=SystemClock.elapsedRealtime();WeatherBackgroundScheduler.schedule(app);jobs=SystemClock.elapsedRealtime()-start
+                start=SystemClock.elapsedRealtime();WeatherBackgroundScheduler.schedule(app);WeatherReminderPreparation.request(app);WeatherWidgets.restore(app);WeatherWidgets.refresh(app,false);jobs=SystemClock.elapsedRealtime()-start
                 complete=true
             } catch (_: Exception) {
                 Log.w("WeatherStartup","Maintenance incomplete; settings/receivers or the next process start can retry")

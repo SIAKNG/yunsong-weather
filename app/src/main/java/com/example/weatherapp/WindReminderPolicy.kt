@@ -27,7 +27,7 @@ object WindReminderPolicy {
         val wind = evaluate(speed, gust) ?: return null
         val kind = if (wind.isGust) "阵风" else "大风"
         return WeatherChangeEvent(city, "wind", now, wind.level.removeSuffix("级").toInt(),
-            "${city.name}大风提醒 · ${wind.level}$kind",
+            "${WeatherAddressFormatter.city(city.name)}大风提醒 · ${wind.level}$kind",
             "当前${if (wind.isGust) "阵风" else "风速"} ${wind.speed} km/h，请注意防风，避免高空作业。")
     }
 

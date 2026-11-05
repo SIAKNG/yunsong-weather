@@ -7,6 +7,8 @@ object WeatherText {
         "CLEAR_NIGHT" -> "晴"
         "PARTLY_CLOUDY_DAY" -> "多云"
         "PARTLY_CLOUDY_NIGHT" -> "多云"
+        "LIGHT_THUNDER", "MODERATE_THUNDER", "HEAVY_THUNDER", "STORM_THUNDER" -> "雷阵雨"
+        "LIGHT_SLEET", "MODERATE_SLEET", "HEAVY_SLEET", "RAIN_SNOW" -> "雨夹雪"
         "CLOUDY" -> "阴"
         "LIGHT_HAZE" -> "轻度雾霾"
         "MODERATE_HAZE" -> "中度雾霾"

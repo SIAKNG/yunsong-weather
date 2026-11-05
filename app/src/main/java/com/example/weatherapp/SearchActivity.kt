@@ -212,7 +212,7 @@ class SearchActivity : AppCompatActivity() {
             val city = items[position]
             val nameTv = newRow.getChildAt(0) as TextView
             val regionTv = newRow.getChildAt(1) as TextView
-            nameTv.text = city.name
+            nameTv.text = WeatherAddressFormatter.city(city.name)
             val region = city.province
             if (region.isNotEmpty() && region != city.name) {
                 regionTv.text = region

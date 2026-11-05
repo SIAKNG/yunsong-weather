@@ -37,7 +37,7 @@ object WeatherCityStore {
         }.getOrNull()
     }
 
-    private fun cities(context: Context): List<CityPage> = runCatching {
+    fun cities(context: Context): List<CityPage> = runCatching {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_CITIES, null) ?: return emptyList()
         val array = JSONArray(raw)

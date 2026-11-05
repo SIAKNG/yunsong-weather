@@ -56,7 +56,7 @@ object WeatherReminderPolicy {
         }
         return WeatherChangeEvent(city, "temperature",
             today.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
-            1, "${city.name}明日变温提醒", "明天较今天$detail，请及时增减衣物。")
+            1, "${WeatherAddressFormatter.city(city.name)}明日变温提醒", "明天较今天$detail，请及时增减衣物。")
     }
 
     /**

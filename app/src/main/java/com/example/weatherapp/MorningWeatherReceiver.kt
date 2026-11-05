@@ -10,7 +10,7 @@ class MorningWeatherReceiver : BroadcastReceiver() {
         val appContext = context.applicationContext
         val tomorrow = intent.action == WeatherNotificationCenter.ACTION_DAILY_TOMORROW
         // 精确闹钟触发时先直接用已保存的天气快照发出通知，避免厂商系统延后
-        // WorkManager 而把早晚提醒整个错过；后台任务完成联网刷新后会以同一通知 ID 静默更新内容。
+        // WorkManager 而把早晚提醒整个错过；缺少有效内容时由后台任务联网补发，成功后台账阻止重复投递。
         WeatherNotificationCenter.postDailyForecast(appContext, tomorrow)
         WeatherBackgroundScheduler.enqueueDailyForecast(
             appContext,

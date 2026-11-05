@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
     <exclude domain="file" path="datastore/caiyun_token_store.preferences_pb" />
+        <exclude domain="sharedpref" path="weather_widgets.xml" />
+        <exclude domain="sharedpref" path="weather_prepared_reminders_v1.xml" />
 </full-backup-content>
