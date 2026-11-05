@@ -13,7 +13,7 @@ android {
         applicationId = "com.example.weatherapp"
         minSdk = 24
         targetSdk = 37
-        versionCode = 9
+        versionCode = 10
         versionName = "1.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "USER_CONFIGURABLE", "true")

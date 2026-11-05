@@ -56,7 +56,7 @@ internal object WeatherInfoWidgetRenderer {
         WeatherWidgetSurface.draw(canvas,w,h,surfaceColors)
         val bw=if(kind in setOf("air","rain")) 172f else 356f
         val bh=if(kind=="daily_summary") 372f else 172f
-        val pad=WeatherWidgetRenderer.contentInset(width,height);val sx=(w-pad*2)/(bw-28);val sy=(h-pad*2)/(bh-28);val fontScale=min(1f,min(sx,sy)).coerceAtLeast(.5f)
+        val pad=WeatherWidgetRenderer.contentInset(width,height,kind);val sx=(w-pad*2)/(bw-28);val sy=(h-pad*2)/(bh-28);val fontScale=min(1f,min(sx,sy)).coerceAtLeast(.5f)
         fun x(value: Float)=pad+(value-14f)*sx
         fun y(value: Float)=pad+(value-14f)*sy
         fun text(value: String,xx: Float,yy: Float,size: Float=12f,bold: Boolean=false,color: Int=Color.WHITE,alpha: Int=255,maxWidth: Float=bw-14-xx,align: Paint.Align=Paint.Align.LEFT,shrink: Boolean=true,bottomAlignedTo: Float?=null): RectF {
