@@ -12,7 +12,6 @@ import android.view.View
 import android.widget.TextView
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.android.material.color.DynamicColors
@@ -22,7 +21,7 @@ import java.util.Locale
 import kotlin.math.abs
 
 /** 空气质量专属二级页：AQI 半圆仪表、污染物网格和逐小时趋势。 */
-open class AirQualityDetailActivity : AppCompatActivity(), DetailPageMotionHost {
+open class AirQualityDetailActivity : WeatherActivity(), DetailPageMotionHost {
     override fun onPostCreate(savedInstanceState: Bundle?) {
         super.onPostCreate(savedInstanceState)
         DetailCardEdges.apply(findViewById(android.R.id.content))

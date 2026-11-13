@@ -467,7 +467,5 @@ class HourlyChartView @JvmOverloads constructor(
     }
 
     private fun dp(v: Float): Float = v * resources.displayMetrics.density
-    private fun sp(v: Float): Float = TypedValue.applyDimension(
-        TypedValue.COMPLEX_UNIT_SP, v, resources.displayMetrics
-    )
+    private fun sp(v: Float): Float = resources.homeWeatherSp(v)
 }

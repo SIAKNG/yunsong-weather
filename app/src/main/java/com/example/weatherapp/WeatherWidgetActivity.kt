@@ -7,7 +7,6 @@ import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import android.widget.*
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
@@ -18,7 +17,7 @@ import java.util.Date
 import java.util.Locale
 
 /** Configuration and recovery are explicit actions; no new location or notification permission. */
-class WeatherWidgetActivity: AppCompatActivity() {
+class WeatherWidgetActivity: WeatherActivity() {
     private var widgetId=AppWidgetManager.INVALID_APPWIDGET_ID
     private lateinit var box: LinearLayout
     private var activeActionGroup: WidgetSettingsGroup?=null

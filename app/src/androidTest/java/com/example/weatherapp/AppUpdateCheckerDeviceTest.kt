@@ -12,7 +12,7 @@ import java.util.concurrent.Executors
 
 class AppUpdateCheckerDeviceTest {
     private val context get()=InstrumentationRegistry.getInstrumentation().targetContext
-    private fun json(tag: String)="""{"draft":false,"prerelease":false,"tag_name":"$tag","assets":[{"name":"app.apk","size":100,"state":"uploaded","browser_download_url":"https://github.com/SIAKNG/yunsong-weather/releases/download/$tag/app.apk"}]}"""
+    private fun json(tag: String, name: String = "yunsong-weather-" + tag.removePrefix("v") + ".apk")="""{"draft":false,"prerelease":false,"tag_name":"$tag","assets":[{"name":"$name","size":100,"state":"uploaded","browser_download_url":"https://github.com/SIAKNG/yunsong-weather/releases/download/$tag/$name"}]}"""
     private fun fixture(block: (Context)->Unit) {
         val prefs=context.getSharedPreferences("update_checker_test_fixture",0)
         val scoped=object : ContextWrapper(context) {

@@ -1,83 +1,69 @@
 package com.example.weatherapp
 
 import android.os.Bundle
+import android.view.View
+import androidx.appcompat.app.AlertDialog
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.appcompat.app.AlertDialog
 import org.junit.Assert.*
 import org.junit.Test
 
-/** Simulates source events in memory; does not modify the user's encrypted API configuration. */
+/** Simulates source and entry changes without modifying the user's encrypted API configuration. */
 class FreeWeatherNoticeDeviceTest {
-    private fun dialog(notice: FreeWeatherNotice?): AlertDialog? =
-        FreeWeatherNotice::class.java.getDeclaredField("dialog").apply {isAccessible=true}.get(notice) as? AlertDialog
+    private fun dialog(notice: FreeWeatherNotice): AlertDialog? =
+        FreeWeatherNotice::class.java.getDeclaredField("dialog").apply { isAccessible = true }.get(notice) as? AlertDialog
 
-    @Test fun acknowledgementSurvivesARecreatedWeatherEntry() {
-        val context=InstrumentationRegistry.getInstrumentation().targetContext
-        val prefs=context.getSharedPreferences("free_weather_notice",android.content.Context.MODE_PRIVATE)
-        val original=prefs.getString("acknowledged",null)
-        try {
-            ActivityScenario.launch(WeatherSettingsActivity::class.java).use { scenario ->
-                var notice: FreeWeatherNotice?=null
-                scenario.onActivity {a ->
-                    notice=FreeWeatherNotice(a,{"open_meteo"},{"persistence-regression"})
-                    notice!!.maybeShow()
-                    assertTrue(dialog(notice)?.isShowing==true)
-                    dialog(notice)!!.findViewById<android.view.View>(R.id.freeWeatherNoticeDismiss)!!.performClick()
-                }
-                InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-                scenario.onActivity {a ->
-                    notice!!.dispose()
-                    notice=FreeWeatherNotice(a,{"open_meteo"},{"persistence-regression"}).apply {restore(null);maybeShow()}
-                    assertNull(dialog(notice))
-                    notice!!.dispose()
-                }
-            }
-        } finally {
-            if(original==null) prefs.edit().remove("acknowledged").commit()
-            else prefs.edit().putString("acknowledged",original).commit()
-        }
-    }
-
-    @Test fun firstEntryAndConfigurationReturnButNotRefreshOrPersonalSource() {
+    @Test fun eachFreeEntryCanShowOnceAndOptOutSuppressesLaterEntries() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
         ActivityScenario.launch(WeatherSettingsActivity::class.java).use { scenario ->
-            var notice: FreeWeatherNotice?=null
-            var source="open_meteo"
-            var event="r0:0"
-            scenario.onActivity { a ->
-                notice=FreeWeatherNotice(a,{source},{event},{})
-                notice!!.maybeShow()
-            }
-            scenario.onActivity {
-                assertTrue(dialog(notice)?.isShowing==true)
-                dialog(notice)!!.findViewById<android.view.View>(R.id.freeWeatherNoticeDismiss)!!.performClick()
-            }
-            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-            scenario.onActivity {
-                notice!!.maybeShow()
-                assertNull(dialog(notice))
-            }
-            // Rotation restoration does not create a second reminder.
-            scenario.onActivity { a ->
-                val state=Bundle();notice!!.save(state);notice!!.dispose()
-                notice=FreeWeatherNotice(a,{source},{event},{}).apply {restore(state);maybeShow()}
-            }
-            scenario.onActivity {assertNull(dialog(notice))}
-            // Return without a configured API, then clearing a configured API.
-            for(next in listOf("r0:1","r1:2")) {
-                event=next
+            lateinit var notice: FreeWeatherNotice
+            var source = WeatherSettings.SOURCE_OPEN_METEO
+            var session = 1L
+            var hidden = false
+
+            fun dismiss() {
                 scenario.onActivity {
-                    notice!!.maybeShow()
-                    assertTrue(dialog(notice)?.isShowing==true)
-                    dialog(notice)!!.findViewById<android.view.View>(R.id.freeWeatherNoticeDismiss)!!.performClick()
+                    assertTrue(dialog(notice)?.isShowing == true)
+                    dialog(notice)!!.findViewById<View>(R.id.freeWeatherNoticeDismiss)!!.performClick()
                 }
-                InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+                instrumentation.waitForIdleSync()
             }
-            for(personal in listOf("caiyun","qweather")) {
-                source=personal;event="r2:3"
-                scenario.onActivity {notice!!.maybeShow();assertNull(dialog(notice))}
+            fun evaluate(expected: Boolean) {
+                scenario.onActivity {
+                    notice.maybeShow()
+                    assertEquals(expected, dialog(notice)?.isShowing == true)
+                }
             }
-            scenario.onActivity {notice!!.dispose()}
+
+            scenario.onActivity { activity ->
+                notice = FreeWeatherNotice(activity, { source }, { session }, { hidden })
+            }
+            evaluate(true)
+            dismiss()
+            evaluate(false)
+
+            scenario.onActivity { activity ->
+                val state = Bundle()
+                notice.save(state)
+                notice.dispose()
+                notice = FreeWeatherNotice(activity, { source }, { session }, { hidden }).apply { restore(state) }
+            }
+            evaluate(false)
+
+            session++
+            evaluate(true)
+            dismiss()
+
+            source = WeatherSettings.SOURCE_CAIYUN
+            evaluate(false)
+            source = WeatherSettings.SOURCE_OPEN_METEO
+            evaluate(true)
+            dismiss()
+
+            hidden = true
+            session++
+            evaluate(false)
+            scenario.onActivity { notice.dispose() }
         }
     }
 }

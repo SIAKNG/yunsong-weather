@@ -5,10 +5,7 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.content.Intent
 import android.graphics.Color
-import android.location.Geocoder
 import android.location.Location
-import android.location.LocationListener
-import android.location.LocationManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -21,7 +18,7 @@ import org.json.JSONObject
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.doOnPreDraw
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -67,7 +64,7 @@ internal object EntryRefreshQueuePolicy {
 
 // 主页：承载多个城市天气页（左右滑动切换），右上角圆点指示当前页；
 // 首次启动获取实时定位并创建定位页，搜索选中新城市时添加新页
-class MainActivity : AppCompatActivity(), WeatherUiHost {
+class MainActivity : WeatherActivity(), WeatherUiHost {
 
     private lateinit var pager: ViewPager2
     private val cityPages = ArrayList<CityPage>()
@@ -97,6 +94,8 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
     private var entryRefreshGeneration = 0
     private lateinit var permissionCoordinator: WeatherPermissionCoordinator
     private var initialPermissionFlowStarted = false
+    private val foregroundLocation by lazy { ForegroundWeatherLocation(applicationContext) }
+    private var automaticLocationInProgress = false
     private var initialPermissionFlowCompleted = false
     private val freeWeatherNotice by lazy { FreeWeatherNotice(this) }
     private val firstApiConfiguration = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -105,8 +104,30 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
     private var explicitWidgetEntry = false
     private val selectedCityPrefKey = "selected_city_key"
 
+    private var homeEntrancePlayed = false
+    private var firstHomeFrame = false
+    private var initialSampleCity: CityPage? = null
+    private var startupBackgroundReady = false
+    private var startupWeather: Pair<String, Boolean>? = null
+    private var showingStartupSky = true
+    private val showStartupWeather = Runnable {
+        startupBackgroundReady = true
+        val weather = startupWeather
+        startupWeather = null
+        if (!isDestroyed && !isFinishing && weather != null) {
+            setWeatherBackground(weather.first, weather.second)
+        }
+    }
+
+    internal fun takeHomeEntrance(): Boolean {
+        if (homeEntrancePlayed) return false
+        homeEntrancePlayed = true
+        return ValueAnimator.areAnimatorsEnabled()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        homeEntrancePlayed = savedInstanceState != null
         freeWeatherNotice.restore(savedInstanceState)
         // Debug 真机验收可由启动参数临时强制白天多云外观；不写入用户设置。
         WeatherAppearancePreview.configure(intent)
@@ -123,6 +144,12 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
         bgCurrent.setBottomLandscapeVisible(false, animate = false)
         bgNext.setBottomLandscapeVisible(false, animate = false)
         bgNext.alpha = 0f
+        val night = WeatherSettings.isDarkTheme(this)
+        val clearSky = if (night) "CLEAR_NIGHT" else "CLEAR_DAY"
+        bgCurrent.setWeather(clearSky, night)
+        bgCurrent.alpha = 1f
+        currentBgSkycon = clearSky
+        currentBgNight = night
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             // 顶部不再整体下移：地址栏蒙版需要延伸到状态栏区域，内容的避让由 WeatherFragment 按 insets 处理；
@@ -132,6 +159,16 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
         }
 
         pager = findViewById(R.id.main)
+        startupBackgroundReady = savedInstanceState != null || !ValueAnimator.areAnimatorsEnabled()
+        pager.doOnPreDraw {
+            firstHomeFrame = true
+            pager.postOnAnimation {
+                if (!isDestroyed && !isFinishing) {
+                    pager.offscreenPageLimit = maxOf(1, cityPages.size - 1)
+                }
+            }
+            if (!startupBackgroundReady) pager.postDelayed(showStartupWeather, 180L)
+        }
         bindCityPager()
         // 页面切换：只有内容（refreshLayout）左右滑动；
         // 背景动画和顶部覆盖层（地理位置）原地淡入淡出，避免滑动裁剪出现空白
@@ -193,6 +230,11 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
 
         // 恢复上次保存的城市；定位城市排第一位，保证每次进入默认显示定位城市
         cityPages.addAll(loadCities())
+        if (cityPages.isEmpty()) {
+            val sample = CityPage("北京", 116.407, 39.904, isCurrentLocation = false)
+            initialSampleCity = sample
+            cityPages.add(sample)
+        }
         if (cityPages.isNotEmpty()) {
             val locIdx = cityPages.indexOfFirst { it.isCurrentLocation }
             if (locIdx > 0) {
@@ -229,9 +271,7 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
     private fun requestInitialPermissions() {
         if (initialPermissionFlowStarted || isFinishing || isDestroyed) return
         initialPermissionFlowStarted = true
-        permissionCoordinator.requestColdStart { locationGranted ->
-            if (locationGranted) getLocation()
-            else if (cityPages.isEmpty()) addCity(CityPage("北京", 116.407, 39.904, isCurrentLocation = false))
+        permissionCoordinator.requestColdStart(onLocationReady = { getLocation() }) {
             WeatherBackgroundScheduler.schedule(this)
             initialPermissionFlowCompleted = true
             pager.post { freeWeatherNotice.maybeShow() }
@@ -255,6 +295,7 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
         lastForegroundSession = session
         // A true app entry resets to location/first city. Internal detail/settings returns do not.
         // A direct widget click is an explicit city request and takes precedence once.
+        if (!sameForeground) WeatherDiagnostics.record(this, WeatherDiagnostics.Event.HOME_OPEN)
         if (!sameForeground && !explicitWidgetEntry && cityPages.isNotEmpty()) {
             pager.setCurrentItem(WeatherHomeSelection.defaultIndex(cityPages), false)
         }
@@ -302,6 +343,9 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
     }
 
     override fun onDestroy() {
+        if (::pager.isInitialized) pager.removeCallbacks(showStartupWeather)
+        bgTransitionId++
+        bgAnimator?.cancel()
         freeWeatherNotice.dispose()
         super.onDestroy()
     }
@@ -322,7 +366,7 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
     // 滑动到任意城市都直接复用已有数据，不再触发刷新。
     private fun bindCityPager() {
         pager.adapter = CityPagerAdapter()
-        pager.offscreenPageLimit = maxOf(1, cityPages.size - 1)
+        if (firstHomeFrame) pager.offscreenPageLimit = maxOf(1, cityPages.size - 1)
     }
 
     private fun reportPageBackground(index: Int) {
@@ -394,6 +438,7 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
     private fun saveCities() {
         val arr = JSONArray()
         for (c in cityPages) {
+            if (c == initialSampleCity) continue
             val o = JSONObject()
                 .put("name", c.name)
                 .put("lng", c.lng)
@@ -404,6 +449,13 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
         }
         prefs.edit().putString("cities", arr.toString()).apply()
         WeatherWidgets.render(this)
+    }
+
+    private fun confirmInitialSample(): Boolean {
+        if (initialSampleCity == null) return false
+        initialSampleCity = null
+        saveCities()
+        return true
     }
 
     private fun loadCities(): ArrayList<CityPage> {
@@ -441,6 +493,12 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
     // 各城市天气加载后上报：天气相同则背景完全不动；不同则全局背景整体淡入淡出
     fun setWeatherBackground(skycon: String?, night: Boolean) {
         if (skycon.isNullOrBlank()) return
+        if (!startupBackgroundReady) {
+            startupWeather = skycon to night
+            return
+        }
+        val firstScene = showingStartupSky
+        showingStartupSky = false
         // Pager reports every frame. Never restart an already-running identical target.
         if (bgFadeRunning && skycon == pendingBgSkycon && night == pendingBgNight) return
         if (!bgFadeRunning && skycon == currentBgSkycon && night == currentBgNight) return
@@ -459,7 +517,7 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
         }
 
         // 仅昼夜变化（如跨过日出/日落时刻）：原地重建当前背景，不做淡入淡出
-        if (skycon == currentBgSkycon && !bgFadeRunning) {
+        if (skycon == currentBgSkycon && !bgFadeRunning && !firstScene) {
             bgFadeRunning = false
             pendingBgSkycon = null
             currentBgNight = night
@@ -489,11 +547,13 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
         // 先递增代际再取消旧动画：旧动画的 onAnimationEnd 因 id 不匹配而直接返回，
         // 不再翻转 currentBgIsA / currentBgSkycon / bgFadeRunning。
         bgAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 220
+            duration = if (firstScene) 430L else 220L
+            if (firstScene) interpolator = android.view.animation.DecelerateInterpolator(1.5f)
             addUpdateListener { anim ->
                 val f = anim.animatedValue as Float
                 to.alpha = initialTargetAlpha + (1f - initialTargetAlpha) * f
-                from.alpha = initialSourceAlpha * (1f - f)
+                // The first scene sits above an opaque backdrop throughout its fade.
+                from.alpha = if (firstScene) initialSourceAlpha else initialSourceAlpha * (1f - f)
             }
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
@@ -592,6 +652,7 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
                     a.isCurrentLocation != b.isCurrentLocation ||
                     a.locationDetail != b.locationDetail
             }
+            initialSampleCity = null
             cityPages.clear()
             cityPages.addAll(newList)
             val sel = data.getIntExtra("selected", 0)
@@ -701,199 +762,79 @@ class MainActivity : AppCompatActivity(), WeatherUiHost {
     override fun hostStatusBarStyle(lightIcons: Boolean) =
         applyStatusBarStyle(lightIcons)
 
-    // ===== 1. 获取定位 =====
-    private fun getLocation() {
-        val lm = getSystemService(LOCATION_SERVICE) as LocationManager
+    internal fun retryForegroundLocation() {
+        permissionCoordinator.requestForegroundLocation { getLocation(manual = true) }
+    }
 
-        val last = lastKnownLocation(lm)
-        if (last != null) {
-            onLocationFound(last)
-            return
-        }
-
-        var gotIt = false
-        val listener = object : LocationListener {
-            override fun onLocationChanged(location: Location) {
-                if (!gotIt) {
-                    gotIt = true
-                    lm.removeUpdates(this)
-                    onLocationFound(location)
+    private fun getLocation(manual: Boolean = false) {
+        if (automaticLocationInProgress) return
+        automaticLocationInProgress = true
+        foregroundLocation.request(preferCache = !manual, timeoutMillis = 15_000L) { location, event ->
+            if (isFinishing || isDestroyed) return@request
+            if (location == null) {
+                automaticLocationInProgress = false
+                if (confirmInitialSample() || manual) toast(event.label)
+            } else {
+                foregroundLocation.reverseGeocode(location) { name, detail ->
+                    automaticLocationInProgress = false
+                    if (!isFinishing && !isDestroyed) applyLocationPage(location, name, detail, manual)
                 }
-            }
-        }
-
-        Handler(Looper.getMainLooper()).postDelayed({
-            if (!gotIt) {
-                gotIt = true
-                lm.removeUpdates(listener)
-                if (cityPages.isEmpty()) {
-                    toast("定位超时，请确认已打开定位，尽量到户外或窗边再试")
-                    addCity(CityPage("北京", 116.407, 39.904, isCurrentLocation = false))
-                }
-            }
-        }, 15000)
-
-        try {
-            if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                lm.requestSingleUpdate(
-                    LocationManager.NETWORK_PROVIDER,
-                    listener,
-                    Looper.getMainLooper()
-                )
-            }
-            if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                lm.requestSingleUpdate(
-                    LocationManager.GPS_PROVIDER,
-                    listener,
-                    Looper.getMainLooper()
-                )
-            }
-        } catch (e: SecurityException) {
-            toast("定位出错：${e.message}")
-            if (cityPages.isEmpty()) {
-                addCity(CityPage("北京", 116.407, 39.904, isCurrentLocation = false))
             }
         }
     }
 
-    private fun lastKnownLocation(lm: LocationManager): Location? {
-        return try {
-            listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
-                .mapNotNull { provider -> runCatching { lm.getLastKnownLocation(provider) }.getOrNull() }
-                .filter { System.currentTimeMillis() - it.time in 0..WeatherRefreshPolicy.LOCATION_CACHE_MS }
-                .maxByOrNull { it.time }
-        } catch (e: SecurityException) {
-            null
+    private fun applyLocationPage(location: Location, name: String?, detail: String?, manual: Boolean) {
+        val selected = cityPages.getOrNull(pager.currentItem)
+        val selectedKey = selected?.selectionKey() ?: prefs.getString(selectedCityPrefKey, null)
+        val previous = cityPages.firstOrNull { it.isCurrentLocation }
+        val nearby = previous?.takeIf { distanceToCity(location, it) < 1_000f }
+        val page = CityPage(name ?: nearby?.name ?: "我的位置", location.longitude, location.latitude, true,
+            detail ?: nearby?.locationDetail.orEmpty())
+        if (previous != page) {
+            initialSampleCity?.let { cityPages.remove(it) }
+            initialSampleCity = null
+            cityPages.removeAll { it.isCurrentLocation }
+            cityPages.add(0, page)
+            bindCityPager()
+            saveCities()
+            refreshAllCitiesOnEntry()
         }
+        val target = if (manual || selected == null || selected.isCurrentLocation) 0
+            else cityPages.indexOfFirst { it.selectionKey() == selectedKey }.coerceAtLeast(0)
+        pager.setCurrentItem(target, false)
     }
 
-    private fun onLocationFound(location: Location) {
-        val lat = location.latitude
-        val lng = location.longitude
-        // 反查城市名 + 详细位置（区县/街道/小区），完成后创建定位页
-        Thread {
-            val (name, detail) = geocode(lat, lng)
-            runOnUiThread {
-                val hadNoCities = cityPages.isEmpty()
-                val selectedWasLocation = cityPages.getOrNull(pager.currentItem)?.isCurrentLocation == true
-                val selectedBefore = cityPages.getOrNull(pager.currentItem)?.selectionKey()
-                    ?: prefs.getString(selectedCityPrefKey, null)
-                val locPage = CityPage(
-                    name = name ?: "我的位置",
-                    lng = lng,
-                    lat = lat,
-                    isCurrentLocation = true,
-                    locationDetail = detail.orEmpty()
-                )
-                val idx = cityPages.indexOfFirst { it.isCurrentLocation }
-                if (idx >= 0) {
-                    // 只更新定位页内容，不再把用户当前阅读的城市强行拉回第一页。
-                    cityPages.removeAt(idx)
-                    cityPages.add(0, locPage)
-                } else {
-                    cityPages.add(0, locPage)
-                }
-                bindCityPager()
-                val target = when {
-                    hadNoCities || selectedWasLocation -> 0
-                    else -> cityPages.indexOfFirst { it.selectionKey() == selectedBefore }
-                        .takeIf { it >= 0 } ?: pager.currentItem.coerceIn(0, cityPages.lastIndex)
-                }
-                pager.post { pager.setCurrentItem(target, false) }
-                saveCities()
-                // 首次定位成功后刚创建的定位页尚未请求天气，交给串行队列立即刷新。
-                refreshAllCitiesOnEntry()
-            }
-        }.start()
-    }
-
-    // 下拉刷新时请求一次最新定位：成功回调最新坐标+详细地址，超时/失败回调 false
+    // Pull-to-refresh requests a live fix. Existing weather remains usable if it fails.
     fun requestLocationRefresh(onDone: (Boolean, Double, Double, String) -> Unit) {
-        val lm = getSystemService(LOCATION_SERVICE) as LocationManager
-        var gotIt = false
-        val listener = object : LocationListener {
-            override fun onLocationChanged(location: Location) {
-                if (gotIt) return
-                gotIt = true
-                try {
-                    lm.removeUpdates(this)
-                } catch (e: Exception) {
-                    // 忽略移除失败
+        foregroundLocation.request(preferCache = false, timeoutMillis = 8_000L) { location, _ ->
+            if (location == null || isFinishing || isDestroyed) {
+                onDone(false, 0.0, 0.0, "")
+                return@request
+            }
+            foregroundLocation.reverseGeocode(location) { name, detail ->
+                if (isFinishing || isDestroyed) {
+                    onDone(false, 0.0, 0.0, "")
+                    return@reverseGeocode
                 }
-                onLocationRefreshed(location, onDone)
-            }
-        }
-
-        fun timeout() {
-            if (gotIt) return
-            gotIt = true
-            try {
-                lm.removeUpdates(listener)
-            } catch (e: Exception) {
-                // 忽略移除失败
-            }
-            runOnUiThread { onDone(false, 0.0, 0.0, "") }
-        }
-
-        Handler(Looper.getMainLooper()).postDelayed({ timeout() }, 8000)
-        try {
-            if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                lm.requestSingleUpdate(
-                    LocationManager.NETWORK_PROVIDER,
-                    listener,
-                    Looper.getMainLooper()
-                )
-            }
-            if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                lm.requestSingleUpdate(
-                    LocationManager.GPS_PROVIDER,
-                    listener,
-                    Looper.getMainLooper()
-                )
-            }
-        } catch (e: SecurityException) {
-            timeout()
-        }
-    }
-
-    // 拿到新定位后：反查地址 → 原地更新定位城市页并保存 → 回调给 WeatherFragment
-    private fun onLocationRefreshed(
-        location: Location,
-        onDone: (Boolean, Double, Double, String) -> Unit
-    ) {
-        val lat = location.latitude
-        val lng = location.longitude
-        Thread {
-            val (name, detail) = geocode(lat, lng)
-            runOnUiThread {
-                val idx = cityPages.indexOfFirst { it.isCurrentLocation }
-                if (idx >= 0) {
-                    val old = cityPages[idx]
-                    cityPages[idx] = old.copy(
-                        name = name ?: old.name,
-                        lng = lng,
-                        lat = lat,
-                        locationDetail = detail.orEmpty()
-                    )
+                val index = cityPages.indexOfFirst { it.isCurrentLocation }
+                val previous = cityPages.getOrNull(index)
+                val nearby = previous?.takeIf { distanceToCity(location, it) < 1_000f }
+                val displayName = name ?: nearby?.name ?: "我的位置"
+                val displayDetail = detail ?: nearby?.locationDetail.orEmpty()
+                if (previous != null) {
+                    cityPages[index] = previous.copy(name = displayName, lng = location.longitude,
+                        lat = location.latitude, locationDetail = displayDetail)
                     saveCities()
                 }
-                onDone(true, lng, lat, detail.orEmpty())
+                onDone(true, location.longitude, location.latitude, displayDetail.ifBlank { displayName })
             }
-        }.start()
+        }
     }
 
-    // 用 Geocoder 反查：城市名 + 详细地址（subLocality 区县 / thoroughfare 街道 / featureName 小区）
-    private fun geocode(lat: Double, lng: Double): Pair<String?, String?> {
-        return try {
-            val addr = Geocoder(this, Locale.CHINA).getFromLocation(lat, lng, 1)?.firstOrNull()
-            if (addr == null) return null to null
-            val name = addr.locality
-            val detail = WeatherAddressFormatter.fromParts(name, addr.subLocality ?: addr.subAdminArea,
-                addr.thoroughfare, addr.featureName)
-            name to detail.ifEmpty { null }
-        } catch (e: Exception) {
-            null to null
-        }
+    private fun distanceToCity(location: Location, city: CityPage): Float {
+        val meters = FloatArray(1)
+        Location.distanceBetween(location.latitude, location.longitude, city.lat, city.lng, meters)
+        return meters[0]
     }
 
     private fun toast(msg: String) {

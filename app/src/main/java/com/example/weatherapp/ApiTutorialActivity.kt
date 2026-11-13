@@ -6,17 +6,17 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
 /** Read-only illustrated instructions. Never signs up, logs in or accesses the clipboard. */
-class ApiTutorialActivity : AppCompatActivity() {
+class ApiTutorialActivity : WeatherActivity() {
     private var qweather = false
     private lateinit var content: LinearLayout
     private lateinit var scroll: ScrollView
@@ -68,11 +68,18 @@ class ApiTutorialActivity : AppCompatActivity() {
         listOf(caiyunTab,qweatherTab).forEach { it.setTextColor(color(if(it.isSelected) R.color.accent else R.color.text_secondary)); it.typeface=if(it.isSelected) Typeface.DEFAULT_BOLD else Typeface.DEFAULT }
         content.removeAllViews()
         content.addView(label(if(qweather) "要准备：自己的 API Host ＋ API Key" else "要准备：自己的彩云天气 Token",19f,true))
-        content.addView(label("按顺序照做即可。下方路径图是操作示意，不是官网截图；网页按钮可能改名，以当前官网为准。最后核对：2026-10-20。",14f).apply { setPadding(0,dp(10),0,dp(14)) })
+        content.addView(label("从上往下操作。图中蓝框标出控制台的操作位置，涉及账号与密钥的字段已遮盖。网页布局可能更新，以当前官网为准。",14f).apply { setPadding(0,dp(10),0,dp(14)) })
         ApiTutorialContent.steps(qweather).forEachIndexed { index,step ->
             val card=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(18),dp(18),dp(18),dp(18)) }
             card.addView(label("${index+1}  ${step.title}",18f,true))
             card.addView(label(step.body).apply { setPadding(0,dp(12),0,0) })
+            step.image?.let { resource ->
+                card.addView(ImageView(this).apply {
+                    setImageResource(resource)
+                    adjustViewBounds = true
+                    contentDescription = step.title + "的官方网页截图"
+                }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+            }
             if(step.path.isNotEmpty()) {
                 val route=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(14),dp(12),dp(14),dp(12)) }
                 route.addView(label("官网导航 / 填写路径示意",12f))

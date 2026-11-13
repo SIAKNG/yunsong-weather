@@ -147,5 +147,5 @@ class WindCompassView @JvmOverloads constructor(
     }
 
     private fun dp(v: Float): Float = v * resources.displayMetrics.density
-    private fun sp(v: Float): Float = v * resources.displayMetrics.scaledDensity
+    private fun sp(v: Float): Float = resources.homeWeatherSp(v)
 }

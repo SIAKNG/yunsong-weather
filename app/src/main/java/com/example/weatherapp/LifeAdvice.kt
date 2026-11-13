@@ -189,7 +189,14 @@ class LifeAdviceGridView @JvmOverloads constructor(
         if (items.isEmpty()) return
         val col = width / 3f
         val row = height / ((items.size + 2) / 3).coerceAtLeast(1).toFloat()
-        advicePaint.textSize = dp(11.5f)
+        val textSize = resources.homeWeatherSp(11.5f)
+        fun drawLabel(label: String, x: Float, y: Float) {
+            advicePaint.textSize = textSize
+            val available = (col - dp(10f)).coerceAtLeast(1f)
+            val measured = advicePaint.measureText(label)
+            if (measured > available) advicePaint.textSize = textSize * available / measured
+            canvas.drawText(label, x, y, advicePaint)
+        }
         items.forEachIndexed { index, item ->
             val cx = col * (index % 3 + .5f)
             val top = row * (index / 3)
@@ -198,90 +205,66 @@ class LifeAdviceGridView @JvmOverloads constructor(
             LifeAdviceIcon.draw(canvas, context, item.key, cx, iconCenterY, dp(12.6f), iconColor)
             // 主页仅显示和风返回的文字分类；点击整卡可查看每项完整原始建议文本。
             advicePaint.color = Color.WHITE
-            canvas.drawText(item.title, cx, top + row * .66f, advicePaint)
+            drawLabel(item.title, cx, top + row * .66f)
             advicePaint.color = Color.argb(188, 255, 255, 255)
-            canvas.drawText(item.level, cx, top + row * .89f, advicePaint)
+            drawLabel(item.level, cx, top + row * .89f)
         }
     }
 
     private fun dp(v: Float) = v * resources.displayMetrics.density
 }
 
-/** 详情页建议条：固定容纳三项，避免与详情页横滑手势冲突。 */
+/** Advice tiles expand with the system font and stack on narrow or large-text layouts. */
 class LifeAdviceStripView @JvmOverloads constructor(
     context: android.content.Context,
     attrs: android.util.AttributeSet? = null
-) : View(context, attrs) {
-    private var items: List<LifeAdviceItem> = emptyList()
-    private var unsupportedText: String? = null
-    private val advicePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; typeface = Typeface.DEFAULT_BOLD }
-    private val iconBackdropPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-    private var darkTheme = false
-    private val iconBorder = WeatherFrostedBorderDrawable(resources.displayMetrics.density, 10f, WeatherSettings.isDarkTheme(context))
-
+) : android.widget.LinearLayout(context, attrs) {
     fun setAdvice(value: List<LifeAdviceItem>, dark: Boolean) {
-        val freeSource = WeatherSettings.useOpenMeteo(context)
-        items = value.take(3).map { item ->
-            if (freeSource && item.level.isBlank()) item.copy(level = "当前不支持") else item
-        }
-        unsupportedText = if (freeSource && items.isEmpty()) "当前不支持" else null
-        contentDescription = unsupportedText ?: items.joinToString("，") { "${it.title}：${it.level}" }
-        darkTheme = dark
-        requestLayout(); invalidate()
-    }
-
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val desiredW = max(dp(312f).toInt(), suggestedMinimumWidth)
-        setMeasuredDimension(resolveSize(desiredW, widthMeasureSpec), resolveSize(dp(84f).toInt(), heightMeasureSpec))
-    }
-
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        val h = height.toFloat()
-        unsupportedText?.let { text ->
-            advicePaint.textSize = dp(14f)
-            advicePaint.color = androidx.core.content.ContextCompat.getColor(context, R.color.text_secondary)
-            canvas.drawText(text, width / 2f,
-                h / 2f - (advicePaint.ascent() + advicePaint.descent()) / 2f, advicePaint)
+        removeAllViews()
+        setPadding(dp(9), dp(8), dp(9), dp(8))
+        val stacked = resources.configuration.fontScale > 1.3f || resources.configuration.screenWidthDp < 340
+        orientation = if (stacked) VERTICAL else HORIZONTAL
+        val free = WeatherSettings.dataSource(context) == "open_meteo"
+        if (value.isEmpty()) {
+            if (free) addView(label("当前不支持", 14f, androidx.core.content.ContextCompat.getColor(context, R.color.text_secondary)),
+                LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
             return
         }
-        val tileWidth = width / max(1, items.size).toFloat()
-        items.forEachIndexed { index, item ->
-            val cx = tileWidth * (index + .5f)
-            // 固定高度内同时容纳图标、项目名称和等级词，保持三项建议始终在一屏内完整呈现。
-            val iconCenterY = h * .30f
-            val badgeSize = min(tileWidth * .48f, dp(31f))
-            val statusColor = LifeAdviceStatusStyle.colorFor(item, darkTheme)
-            iconBackdropPaint.color = Color.argb(if (darkTheme) 48 else 32,
-                Color.red(statusColor), Color.green(statusColor), Color.blue(statusColor))
-            canvas.drawRoundRect(
-                cx - badgeSize / 2f, iconCenterY - badgeSize / 2f,
-                cx + badgeSize / 2f, iconCenterY + badgeSize / 2f,
-                min(dp(10f), badgeSize / 2f), min(dp(10f), badgeSize / 2f), iconBackdropPaint
-            )
-            iconBorder.setBounds((cx - badgeSize / 2f).toInt(), (iconCenterY - badgeSize / 2f).toInt(),
-                (cx + badgeSize / 2f).toInt(), (iconCenterY + badgeSize / 2f).toInt())
-            iconBorder.draw(canvas)
-            LifeAdviceIcon.draw(canvas, context, item.key, cx, iconCenterY, dp(11.4f), statusColor)
-            advicePaint.textSize = dp(10f)
-            advicePaint.color = if (darkTheme) Color.argb(224, 244, 248, 255)
-            else Color.argb(220, 31, 43, 58)
-            canvas.drawText(fitText(item.title, tileWidth - dp(12f)), cx, h * .64f, advicePaint)
-            advicePaint.textSize = dp(10.5f)
-            advicePaint.color = statusColor
-            canvas.drawText(fitText(item.level.ifBlank { item.title }, tileWidth - dp(12f)), cx, h * .87f, advicePaint)
+        for (item in value.take(3)) {
+            val status = item.level.ifBlank { if (free) "当前不支持" else item.title }
+            val statusColor = LifeAdviceStatusStyle.colorFor(item, dark)
+            val tile = android.widget.LinearLayout(context).apply {
+                orientation = VERTICAL
+                gravity = android.view.Gravity.CENTER_HORIZONTAL
+                setPadding(dp(4), dp(5), dp(4), dp(5))
+            }
+            val badge = LifeAdviceIconView(context).apply {
+                adviceKey = item.key
+                iconColor = statusColor
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(androidx.core.graphics.ColorUtils.setAlphaComponent(statusColor, if (dark) 48 else 32))
+                    cornerRadius = dp(10).toFloat()
+                }
+                foreground = WeatherFrostedBorderDrawable(resources.displayMetrics.density, 10f, dark)
+            }
+            tile.addView(badge, LayoutParams(dp(31), dp(31)))
+            tile.addView(label(item.title, 10f, androidx.core.content.ContextCompat.getColor(context, R.color.text_primary)))
+            tile.addView(label(status, 10.5f, statusColor))
+            addView(tile, if (stacked) LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+                else LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
         }
     }
 
-    private fun fitText(value: String, maxWidth: Float): String {
-        if (advicePaint.measureText(value) <= maxWidth) return value
-        val ellipsis = "…"
-        val available = (maxWidth - advicePaint.measureText(ellipsis)).coerceAtLeast(0f)
-        val count = advicePaint.breakText(value, true, available, null)
-        return value.take(count) + ellipsis
+    private fun label(value: String, size: Float, color: Int) = android.widget.TextView(context).apply {
+        text = value
+        textSize = size
+        setTextColor(color)
+        gravity = android.view.Gravity.CENTER
+        typeface = Typeface.DEFAULT_BOLD
+        setPadding(0, dp(2), 0, 0)
     }
 
-    private fun dp(v: Float) = v * resources.displayMetrics.density
+    private fun dp(value: Int) = (value * resources.displayMetrics.density + .5f).toInt()
 }
 
 /**

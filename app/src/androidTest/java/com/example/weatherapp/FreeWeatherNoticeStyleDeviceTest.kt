@@ -19,6 +19,20 @@ class FreeWeatherNoticeStyleDeviceTest {
     private fun dialog(notice: FreeWeatherNotice): AlertDialog =
         FreeWeatherNotice::class.java.getDeclaredField("dialog").apply {isAccessible=true}.get(notice) as AlertDialog
 
+    @Test fun apiSwitchUsesTheWeatherSettingsDrawables() {
+        ActivityScenario.launch(ApiConfigurationActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val toggle = activity.findViewById<android.widget.Switch>(R.id.freeWeatherNoticeOptOut)
+                val reference = activity.layoutInflater.inflate(R.layout.activity_weather_settings, null)
+                    .findViewById<android.widget.Switch>(R.id.switchDisasterReminder)
+                assertEquals(reference.thumbDrawable.intrinsicWidth, toggle.thumbDrawable.intrinsicWidth)
+                assertEquals(reference.trackDrawable.intrinsicWidth, toggle.trackDrawable.intrinsicWidth)
+                assertEquals(reference.trackTintList, toggle.trackTintList)
+                assertEquals(reference.splitTrack, toggle.splitTrack)
+            }
+        }
+    }
+
     @Test fun realBackdropBlurRimsAndDimmingInBothThemes() {
         val original=WeatherSettings.themeMode(context)
         try {
@@ -30,7 +44,7 @@ class FreeWeatherNoticeStyleDeviceTest {
                     lateinit var window: android.view.Window
                     scenario.onActivity {a ->
                         assertEquals(dark,WeatherSettings.isDarkTheme(a))
-                        notice=FreeWeatherNotice(a,{"open_meteo"},{"style-$dark"},{})
+                        notice=FreeWeatherNotice(a,{WeatherSettings.SOURCE_OPEN_METEO},{1L},{false})
                         notice.maybeShow()
                         window=requireNotNull(dialog(notice).window)
                     }

@@ -7,7 +7,6 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.WindowManager
 import android.widget.*
-import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
@@ -18,15 +17,15 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.appcompat.app.AlertDialog
 
 /** Only reachable in userApi; no prefilled built-in secret, clipboard read or credential logging. */
-class ApiConfigurationActivity : AppCompatActivity() {
+class ApiConfigurationActivity : WeatherActivity() {
     private val checker by lazy { ViewModelProvider(this)[ApiCapabilityViewModel::class.java] }
     private var progressDialog: AlertDialog? = null
     private var reportDialog: AlertDialog? = null
     private var progressText: TextView? = null
+    private var activeProviderTab = 0
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (!BuildConfig.USER_CONFIGURABLE) { finish(); return }
-        if (savedInstanceState == null) FreeWeatherNotice.configurationOpened(this)
         val dark=WeatherSettings.isDarkTheme(this)
         val bars=if(dark) androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
             else androidx.activity.SystemBarStyle.light(android.graphics.Color.TRANSPARENT,android.graphics.Color.TRANSPARENT)
@@ -71,11 +70,11 @@ class ApiConfigurationActivity : AppCompatActivity() {
             revealInput();i
         }
         ViewCompat.requestApplyInsets(scroll)
-        fun text(value: String, size: Float = 15f) = TextView(this).apply {
+        fun text(value: String, size: Float = 15f, parent: LinearLayout = layout) = TextView(this).apply {
             text = value; textSize = size; setPadding(0, dp(10), 0, dp(6));setLineSpacing(dp(3).toFloat(),1f)
-            setTextColor(ContextCompat.getColor(this@ApiConfigurationActivity, R.color.text_primary)); layout.addView(this)
+            setTextColor(ContextCompat.getColor(this@ApiConfigurationActivity, R.color.text_primary)); parent.addView(this)
         }
-        text("天气源 · 自行配置", 22f)
+        text("天气数据 · API 配置", 22f)
         text("不填接口也能使用 Open-Meteo 免费天气。填写自己的彩云或和风接口后优先使用个人接口，不再请求 Open-Meteo。凭证仅加密保存在本机。")
         fun action(value: String, callback: () -> Unit) = TextView(this).apply {
             text=value; textSize=15f; gravity=android.view.Gravity.CENTER
@@ -84,18 +83,26 @@ class ApiConfigurationActivity : AppCompatActivity() {
             layout.addView(this,LinearLayout.LayoutParams(-1,-2).apply { topMargin=(12*resources.displayMetrics.density).toInt() })
             SettingsGlassStyle.decorate(this,16f,true)
         }
-        action("如何获取与填写 API") { startActivity(android.content.Intent(this,ApiTutorialActivity::class.java)) }.apply {
+        action("如何获取与填写 API") {
+            startActivity(android.content.Intent(this, ApiTutorialActivity::class.java).putExtra("qweather", activeProviderTab == 1))
+        }.apply {
             id = R.id.btnApiTutorial
         }
-        if(old.qweatherApiKey.isBlank() && (old.qweatherPem.isNotBlank() || old.qweatherKid.isNotBlank()))
-            text("旧配置使用私钥方式。本版改为仅支持 API Key，请按教程填写自己的 Host + API Key；旧加密内容在你主动保存前不会被清除。")
+        val noticeRow = layoutInflater.inflate(R.layout.row_free_weather_notice, layout, false)
+        val noticeToggle = noticeRow.findViewById<Switch>(R.id.freeWeatherNoticeOptOut)
+        noticeToggle.isChecked = FreeWeatherNotice.isHidden(this)
+        noticeToggle.setOnCheckedChangeListener { _, hidden -> FreeWeatherNotice.setHidden(this, hidden) }
+        noticeRow.setOnClickListener { noticeToggle.performClick() }
+        layout.addView(noticeRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        SettingsGlassStyle.decorate(noticeRow, 16f)
+        text("天气源优先级")
         val source = Spinner(this).apply {
             adapter = ArrayAdapter(this@ApiConfigurationActivity, android.R.layout.simple_spinner_dropdown_item, listOf("自动 · 个人 API 优先，无配置时免费天气", "彩云主源 · 已填和风可补充", "和风天气主源"))
             setSelection(when(old.source) {WeatherSettings.SOURCE_QWEATHER->2;WeatherSettings.SOURCE_CAIYUN->1;else->0}); layout.addView(this)
         }
         val controls=mutableListOf<View>(source)
-        fun field(idValue: Int,label: String, value: String, secret: Boolean = false): EditText {
-            text(label)
+        fun field(parent: LinearLayout, idValue: Int,label: String, value: String, secret: Boolean = false): EditText {
+            text(label, parent = parent)
             return EditText(this).apply {
                 id=idValue;setText(value); textSize = 15f; isSaveEnabled = false
                 if (android.os.Build.VERSION.SDK_INT >= 26)
@@ -105,7 +112,7 @@ class ApiConfigurationActivity : AppCompatActivity() {
                 if(secret) transformationMethod=android.text.method.PasswordTransformationMethod.getInstance()
                 imeOptions=EditorInfo.IME_ACTION_NEXT or EditorInfo.IME_FLAG_NO_EXTRACT_UI
                 setTextColor(ContextCompat.getColor(this@ApiConfigurationActivity, R.color.text_primary))
-                layout.addView(this, LinearLayout.LayoutParams(-1, -2))
+                parent.addView(this, LinearLayout.LayoutParams(-1, -2))
                 setBackgroundResource(R.drawable.search_bg);backgroundTintList=null
                 foreground=null;elevation=0f;minHeight=dp(48);setPadding(dp(16),dp(10),dp(16),dp(10))
                 setHintTextColor(ContextCompat.getColor(context,R.color.text_tertiary));hint="点击填写"
@@ -114,20 +121,65 @@ class ApiConfigurationActivity : AppCompatActivity() {
                 controls.add(this)
             }
         }
-        val caiyun = field(R.id.apiCaiyunToken,"彩云 API Token", old.caiyunToken, true)
-        text("彩云接口版本（默认 2.6；有 2.7 权限时可选择 2.7）")
+        val tabs = com.google.android.material.tabs.TabLayout(this).apply {
+            tabMode = com.google.android.material.tabs.TabLayout.MODE_FIXED
+            setTabTextColors(ContextCompat.getColor(context, R.color.text_secondary), ContextCompat.getColor(context, R.color.accent))
+            setSelectedTabIndicatorColor(ContextCompat.getColor(context, R.color.accent))
+            addTab(newTab().setId(R.id.apiConfigCaiyunTab).setText("彩云天气"))
+            addTab(newTab().setId(R.id.apiConfigQweatherTab).setText("和风天气"))
+        }
+        layout.addView(tabs, LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(14) })
+        fun formPanel() = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layout.addView(this, LinearLayout.LayoutParams(-1, -2))
+        }
+        val caiyunPanel = formPanel()
+        val caiyun = field(caiyunPanel, R.id.apiCaiyunToken,"彩云 API Token", old.caiyunToken, true)
+        text("彩云接口版本（默认 2.6；有 2.7 权限时可选择 2.7）", parent = caiyunPanel)
         val version = Spinner(this).apply {
             adapter = ArrayAdapter(this@ApiConfigurationActivity, android.R.layout.simple_spinner_dropdown_item, listOf("2.6", "2.7"))
-            setSelection(if (old.caiyunVersion == "2.7") 1 else 0); layout.addView(this)
+            setSelection(if (old.caiyunVersion == "2.7") 1 else 0)
+            caiyunPanel.addView(this)
         }
         controls.add(version)
-        val host = field(R.id.apiQweatherHost,"和风 API Host（复制控制台的完整专属域名）", old.qweatherHost)
-        val apiKey = field(R.id.apiQweatherKey,"和风 API Key", old.qweatherApiKey, true)
-        val amap = field(R.id.apiAmapKey,"高德 Web 服务 Key（可选；留空使用本地城市搜索）", old.amapKey, true)
-        caiyun.nextFocusForwardId=host.id;host.nextFocusForwardId=apiKey.id;apiKey.nextFocusForwardId=amap.id
-        amap.imeOptions=EditorInfo.IME_ACTION_DONE or EditorInfo.IME_FLAG_NO_EXTRACT_UI
-        amap.setOnEditorActionListener { v,actionId,_->
-            if(actionId==EditorInfo.IME_ACTION_DONE) { WindowInsetsControllerCompat(window,v).hide(WindowInsetsCompat.Type.ime());v.clearFocus();true } else false
+        val qweatherPanel = formPanel()
+        if (old.qweatherApiKey.isBlank() && (old.qweatherPem.isNotBlank() || old.qweatherKid.isNotBlank())) {
+            text("旧配置使用私钥方式。本版支持 API Key，请按教程填写 Host 和 API Key。", parent = qweatherPanel)
+        }
+        val host = field(qweatherPanel, R.id.apiQweatherHost,"和风 API Host（复制控制台的完整专属域名）", old.qweatherHost)
+        val apiKey = field(qweatherPanel, R.id.apiQweatherKey,"和风 API Key", old.qweatherApiKey, true)
+        host.nextFocusForwardId = apiKey.id
+        fun showProvider(index: Int) {
+            activeProviderTab = index
+            caiyunPanel.visibility = if (index == 0) View.VISIBLE else View.GONE
+            qweatherPanel.visibility = if (index == 1) View.VISIBLE else View.GONE
+        }
+        showProvider(savedInstanceState?.getInt("api_provider_tab") ?: if (old.effectiveSource() == WeatherSettings.SOURCE_QWEATHER) 1 else 0)
+        tabs.selectTab(tabs.getTabAt(activeProviderTab))
+        tabs.addOnTabSelectedListener(object : com.google.android.material.tabs.TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: com.google.android.material.tabs.TabLayout.Tab) {
+                currentFocus?.clearFocus()
+                WindowInsetsControllerCompat(window, scroll).hide(WindowInsetsCompat.Type.ime())
+                showProvider(tab.position)
+            }
+            override fun onTabUnselected(tab: com.google.android.material.tabs.TabLayout.Tab) = Unit
+            override fun onTabReselected(tab: com.google.android.material.tabs.TabLayout.Tab) = Unit
+        })
+        val amapAction = action("高德城市搜索（可选）") {}
+        val extraPanel = formPanel().apply { visibility = View.GONE }
+        amapAction.setOnClickListener { extraPanel.visibility = if (extraPanel.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
+        val amap = field(extraPanel, R.id.apiAmapKey,"高德 Web 服务 Key（留空使用本地城市搜索）", old.amapKey, true)
+        listOf(caiyun, apiKey, amap).forEach {
+            it.imeOptions = EditorInfo.IME_ACTION_DONE or EditorInfo.IME_FLAG_NO_EXTRACT_UI
+        }
+        listOf(caiyun, apiKey, amap).forEach { input ->
+            input.setOnEditorActionListener { v,actionId,_ ->
+                if (actionId == EditorInfo.IME_ACTION_DONE) {
+                    WindowInsetsControllerCompat(window, v).hide(WindowInsetsCompat.Type.ime())
+                    v.clearFocus()
+                    true
+                } else false
+            }
         }
         fun formConfiguration() = UserApiConfiguration.Config(
                     when(source.selectedItemPosition) {2->WeatherSettings.SOURCE_QWEATHER;1->WeatherSettings.SOURCE_CAIYUN;else->"auto"},
@@ -188,6 +240,11 @@ class ApiConfigurationActivity : AppCompatActivity() {
         }
     }
     private fun dp(value: Int)=(value*resources.displayMetrics.density).toInt()
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putInt("api_provider_tab", activeProviderTab)
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onDestroy() {
         progressDialog?.dismiss();reportDialog?.dismiss();progressDialog=null;reportDialog=null
         super.onDestroy()

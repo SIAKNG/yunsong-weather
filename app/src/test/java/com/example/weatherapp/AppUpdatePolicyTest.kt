@@ -4,10 +4,10 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AppUpdatePolicyTest {
-    private fun release(tag: String = "v1.1", code: Int = 4, flags: String = "\"draft\":false,\"prerelease\":false", asset: String = "app.apk") =
+    private fun release(tag: String = "v1.1", code: Int = 4, flags: String = "\"draft\":false,\"prerelease\":false", asset: String = "yunsong-weather-" + tag.removePrefix("v").removeSuffix("-userapi") + ".apk") =
         """{"tag_name":"$tag",$flags,"body":"<!-- yunsong-version-code: $code -->","assets":[{"name":"$asset","size":100,"state":"uploaded","browser_download_url":"https://github.com/SIAKNG/yunsong-weather/releases/download/$tag/$asset"}]}"""
     private fun status(json: String, code: Int = 4) = AppUpdatePolicy.evaluate(200,json,"1.1-userapi",code).status
-    @Test fun newerSemanticVersion() { assertEquals(AppUpdatePolicy.Status.NEW_VERSION,status(release("v1.2",1))) }
+    @Test fun newerSemanticVersion() { assertEquals(AppUpdatePolicy.Status.NEW_VERSION,status(release("v1.2",5))) }
     @Test fun sameVersionHigherBuild() { assertEquals(AppUpdatePolicy.Status.NEW_VERSION,status(release(),3)) }
     @Test fun sameBuildIsCurrent() { assertEquals(AppUpdatePolicy.Status.CURRENT,status(release())) }
     @Test fun versionedApkNameRemainsCompatible() {
@@ -16,7 +16,7 @@ class AppUpdatePolicyTest {
     }
     @Test fun olderBuildIsCurrent() { assertEquals(AppUpdatePolicy.Status.CURRENT,status(release(code=3))) }
     @Test fun olderVersionCannotUpgradeEvenWithHigherCode() { assertEquals(AppUpdatePolicy.Status.CURRENT,status(release("v1.0",999))) }
-    @Test fun userApiSuffixAndPatchSupported() { assertEquals(AppUpdatePolicy.Status.NEW_VERSION,status(release("v1.1.1-userapi"))) }
+    @Test fun userApiSuffixAndPatchSupported() { assertEquals(AppUpdatePolicy.Status.NEW_VERSION,status(release("v1.1.1-userapi",5))) }
     @Test fun invalidVersionFailsHonestly() { assertEquals(AppUpdatePolicy.Status.FAILED,status(release("preview"))) }
     @Test fun draftIsNotAnUpdate() { assertEquals(AppUpdatePolicy.Status.FAILED,status(release(flags="\"draft\":true,\"prerelease\":false"))) }
     @Test fun prereleaseIsNotAnUpdate() { assertEquals(AppUpdatePolicy.Status.FAILED,status(release(flags="\"draft\":false,\"prerelease\":true"))) }
@@ -26,5 +26,16 @@ class AppUpdatePolicyTest {
     @Test fun privateOrMissingIsNotReportedAsCurrent() { assertEquals(AppUpdatePolicy.Status.UNAVAILABLE,AppUpdatePolicy.evaluate(404,"","1.1",4).status) }
     @Test fun rateLimitAndServerErrorDoNotReportCurrent() { for(code in listOf(403,429,500)) assertEquals(AppUpdatePolicy.Status.FAILED,AppUpdatePolicy.evaluate(code,"","1.1",4).status) }
     @Test fun malformedResponseDoesNotCrash() { for(json in listOf("{}","broken","null","[]")) assertEquals(AppUpdatePolicy.Status.FAILED,status(json)) }
-    @Test fun badgeClearlyShowsNewVersion() { assertEquals("有新版本 1.2",AppUpdatePolicy.evaluate(200,release("v1.2"),"1.1-userapi",4).label) }
+    @Test fun selectedApkHasTheVersionedDownloadAndDigest() {
+        val hash = "a".repeat(64)
+        val json = release("v1.2", 5).replace("\"size\":100", "\"size\":100,\"digest\":\"sha256:$hash\"")
+        val result = AppUpdatePolicy.evaluate(200,json,"1.1-userapi",4)
+        assertEquals(AppUpdatePolicy.Apk(
+            "https://github.com/SIAKNG/yunsong-weather/releases/download/v1.2/yunsong-weather-1.2.apk",
+            100,hash,5),result.apk)
+        assertEquals(AppUpdatePolicy.Status.FAILED,status(json.replace(hash,"invalid")))
+        assertEquals(AppUpdatePolicy.Status.FAILED,status(json.replace("/download/v1.2/","/download/v9.9/")))
+        assertEquals(AppUpdatePolicy.Status.CURRENT,status(release("v1.2",3)))
+    }
+    @Test fun badgeClearlyShowsNewVersion() { assertEquals("有新版本 1.2",AppUpdatePolicy.evaluate(200,release("v1.2",5),"1.1-userapi",4).label) }
 }

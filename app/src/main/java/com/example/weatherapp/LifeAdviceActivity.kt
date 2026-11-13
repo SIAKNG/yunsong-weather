@@ -12,13 +12,12 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
 /** 展示选中天气源返回的生活指数；区分不支持与暂未返回。 */
-class LifeAdviceActivity : AppCompatActivity() {
+class LifeAdviceActivity : WeatherActivity() {
     override fun onPostCreate(savedInstanceState: Bundle?) {
         super.onPostCreate(savedInstanceState)
         DetailCardEdges.apply(findViewById(android.R.id.content))
@@ -109,22 +108,21 @@ class LifeAdviceActivity : AppCompatActivity() {
         head.addView(TextView(this@LifeAdviceActivity).apply {
             text = item.title
             textSize = 16f
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
             gravity = Gravity.CENTER_VERTICAL
             setTypeface(null, android.graphics.Typeface.BOLD)
             setTextColor(ContextCompat.getColor(this@LifeAdviceActivity, R.color.text_primary))
-            layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f)
+            minHeight = dp(42)
+            layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
         })
         head.addView(TextView(this@LifeAdviceActivity).apply {
             // 等级固定在标题同一基线的右端，不再作为次级小字占据第二行。
             text = statusText
             textSize = 14f
-            maxLines = 1
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
             setPadding(dp(8), 0, 0, 0)
             setTypeface(null, android.graphics.Typeface.BOLD)
             setTextColor(statusColor)
+            if (resources.configuration.fontScale > 1.25f) layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
         })
         addView(head)
         addView(TextView(this@LifeAdviceActivity).apply {

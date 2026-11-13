@@ -41,7 +41,13 @@ class SunAltitudeChartView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         if (samples.size < 2) return
-        val left = dp(2f); val right = width - dp(2f); val top = dp(10f); val bottom = height - dp(26f)
+        text.textSize = sp(11f)
+        val staggerCaptions = (text.measureText("00:00") + dp(4f)) * 6f > width
+        val captionSpacing = text.fontSpacing + dp(2f)
+        val left = dp(2f)
+        val right = width - dp(2f)
+        val top = dp(10f)
+        val bottom = height - maxOf(dp(26f), captionSpacing * (if (staggerCaptions) 2 else 1) + dp(9f))
         val minValue = min(-20.0, samples.minOf { it.second })
         val maxValue = max(50.0, samples.maxOf { it.second })
         fun x(index: Int) = left + (right - left) * index / (samples.lastIndex.toFloat())
@@ -113,9 +119,12 @@ class SunAltitudeChartView @JvmOverloads constructor(
             density = resources.displayMetrics.density
         )
         text.color = if (dark) Color.argb(190, 255, 255, 255) else Color.rgb(112, 119, 128); text.textSize = sp(11f)
-        listOf(0, samples.lastIndex / 4, samples.lastIndex / 2, samples.lastIndex * 3 / 4, samples.lastIndex).distinct().forEach { i ->
+        listOf(0, samples.lastIndex / 4, samples.lastIndex / 2, samples.lastIndex * 3 / 4, samples.lastIndex).distinct().forEachIndexed { tick, i ->
             val c = java.util.Calendar.getInstance().apply { timeInMillis = samples[i].first }
-            canvas.drawText(String.format(java.util.Locale.US, "%02d:00", c.get(java.util.Calendar.HOUR_OF_DAY)), x(i).coerceIn(dp(16f), right - dp(16f)), height - dp(7f), text)
+            val label = String.format(java.util.Locale.US, "%02d:00", c.get(java.util.Calendar.HOUR_OF_DAY))
+            val half = (text.measureText(label) / 2f + dp(1f)).coerceAtMost(width / 2f)
+            val offset = if (staggerCaptions && tick % 2 == 0) captionSpacing else 0f
+            canvas.drawText(label, x(i).coerceIn(half, width - half), height - dp(7f) - offset, text)
         }
     }
 
@@ -136,7 +145,7 @@ class SunAltitudeChartView @JvmOverloads constructor(
     override fun performClick(): Boolean { super.performClick(); return true }
     private fun notifySelection() { samples.getOrNull(selected)?.let { onSelectionChanged?.invoke(it.first, it.second) } }
     private fun dp(v: Float) = v * resources.displayMetrics.density
-    private fun sp(v: Float) = v * resources.displayMetrics.scaledDensity
+    private fun sp(v: Float) = resources.weatherSp(v)
     private fun Int.red() = Color.red(this)
     private fun Int.green() = Color.green(this)
     private fun Int.blue() = Color.blue(this)

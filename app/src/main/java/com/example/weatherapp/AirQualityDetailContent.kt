@@ -32,7 +32,7 @@ internal class AirQualityDetailContent(
 
     fun bind(darkTheme: Boolean) {
         val city = intent.getStringExtra(EXTRA_CITY).orEmpty().ifBlank { "当前位置" }
-        WeatherAddressFormatter.bind(findViewById(R.id.tvAirQualityLocation), city)
+        WeatherAddressFormatter.bindDetail(findViewById(R.id.tvAirQualityLocation), city)
         val now = System.currentTimeMillis()
         // 详情页必须使用“天气源实时 AQI + 趋势污染物补全”后的同一快照。
         // 旧逻辑优先取原始实时对象（常常只有 AQI），会把已补齐的 PM2.5/NO₂ 等字段重新置空。

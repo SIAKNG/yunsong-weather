@@ -20,22 +20,111 @@ import android.widget.PopupWindow
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.SystemBarStyle
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.color.DynamicColors
 import com.google.android.material.color.MaterialColors
 import android.widget.CompoundButton
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.util.concurrent.Executors
 
 // 天气设置页：数据源、深浅色模式、温度/风力/气压/能见度单位、关于天气。
 // 每个分区是一行“标题 + 当前值 + 箭头”，点击后弹出悬浮小面板进行选择（参考 shezhi 效果）；
 // 主题色跟随手机默认的动态主题色（Material You）。
-class WeatherSettingsActivity : AppCompatActivity() {
+class WeatherSettingsActivity : WeatherActivity() {
+    companion object {
+        internal const val RESULT_RETRY_LOCATION = RESULT_FIRST_USER
+    }
+
+    private val saveProblemDiagnostics = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        if (uri != null) {
+            val result = runCatching {
+                requireNotNull(contentResolver.openOutputStream(uri)).use { output ->
+                    output.write(WeatherDiagnostics.report(this).toByteArray(Charsets.UTF_8))
+                }
+            }
+            Toast.makeText(this, if (result.isSuccess) "诊断报告已保存" else "诊断报告保存失败", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showProblemDiagnostics() {
+        val recording = WeatherDiagnostics.enabled(this)
+        val actions = mutableListOf<Pair<String, () -> Unit>>()
+        actions += (if (recording) "停止记录" else "开始记录") to {
+            WeatherDiagnostics.setEnabled(this, !recording)
+            showProblemDiagnostics()
+        }
+        if (recording) actions += "标记问题发生" to {
+            WeatherDiagnostics.record(this, WeatherDiagnostics.Event.USER_MARK)
+            Toast.makeText(this, "已标记问题时间", Toast.LENGTH_SHORT).show()
+        }
+        actions += "重试系统定位" to {
+            setResult(RESULT_RETRY_LOCATION)
+            finish()
+        }
+        actions += "查看记录（${WeatherDiagnostics.entries(this).size} 条）" to {
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                .setTitle("诊断记录")
+                .setMessage(WeatherDiagnostics.report(this))
+                .setPositiveButton("返回") { _, _ -> showProblemDiagnostics() }
+                .show()
+        }
+        actions += "保存 TXT 报告" to { exportProblemDiagnostics() }
+        actions += "分享 TXT 报告" to { shareProblemDiagnostics() }
+        actions += "清除记录" to {
+            WeatherDiagnostics.clear(this)
+            showProblemDiagnostics()
+        }
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle(if (recording) "问题诊断 · 正在记录" else "问题诊断与定位")
+            .setItems(actions.map { it.first }.toTypedArray()) { _, which -> actions[which].second() }
+            .setNegativeButton("关闭", null)
+            .show()
+    }
+
+    private fun shareProblemDiagnostics() {
+        val appContext = applicationContext
+        updateExecutor.execute {
+            val report = runCatching { WeatherDiagnostics.shareIntent(appContext) }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                val intent = report.getOrNull()
+                if (intent == null) {
+                    Toast.makeText(this, "诊断报告生成失败", Toast.LENGTH_SHORT).show()
+                    return@runOnUiThread
+                }
+                try {
+                    startActivity(Intent.createChooser(intent, "分享诊断报告"))
+                } catch (_: android.content.ActivityNotFoundException) {
+                    Toast.makeText(this, "找不到可分享报告的应用，请使用保存功能", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private fun exportProblemDiagnostics() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            saveProblemDiagnostics.launch("云松天气-诊断记录.txt")
+            return
+        }
+        val appContext = applicationContext
+        updateExecutor.execute {
+            val saved = runCatching { WeatherDiagnostics.saveToDownloads(appContext) }.isSuccess
+            runOnUiThread {
+                Toast.makeText(appContext, if (saved) "诊断报告已保存到下载文件夹" else "诊断报告保存失败",
+                    Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     private class Option(val id: Int, val label: String)
     private class Section(
@@ -64,6 +153,14 @@ class WeatherSettingsActivity : AppCompatActivity() {
     private var manualUpdatePending = false
     private var lastUpdateCompletedAt = 0L
     private var updateRequest: (Boolean) -> AppUpdatePolicy.Result = { force -> AppUpdateChecker(applicationContext).check(force) }
+    private val updateDownload by lazy { ViewModelProvider(this)[AppUpdateDownloadModel::class.java] }
+    private var updateConfirmDialog: AlertDialog? = null
+    private var updateProgressDialog: AlertDialog? = null
+    private var updateProgressBar: android.widget.ProgressBar? = null
+    private val updateInstallPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (canInstallUpdate()) installReadyUpdate()
+        else Toast.makeText(this, "可在检查更新处继续安装", Toast.LENGTH_SHORT).show()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -284,10 +381,22 @@ class WeatherSettingsActivity : AppCompatActivity() {
             startActivity(Intent(this, WeatherWidgetActivity::class.java))
         }
         // —— 关于天气 ——
+        findViewById<View>(R.id.btnProblemDiagnostics).setOnClickListener { showProblemDiagnostics() }
         findViewById<View>(R.id.btnAbout).setOnClickListener {
             startActivity(Intent(this, WeatherAboutActivity::class.java))
         }
-        findViewById<View>(R.id.btnCheckUpdate).setOnClickListener { requestUpdateCheck(manual = true) }
+        findViewById<View>(R.id.btnCheckUpdate).setOnClickListener {
+            when (updateDownload.state.value) {
+                is AppUpdateDownloadModel.State.Ready -> installReadyUpdate()
+                is AppUpdateDownloadModel.State.Downloading -> Unit
+                else -> requestUpdateCheck(manual = true)
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                updateDownload.state.collect(::renderUpdateDownload)
+            }
+        }
         SettingsGlassStyle.applyTree(findViewById(R.id.settingsRoot))
     }
 
@@ -455,7 +564,8 @@ class WeatherSettingsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if(lastUpdateCompletedAt==0L || android.os.SystemClock.uptimeMillis()-lastUpdateCompletedAt>=60_000L) {
+        if (updateDownload.state.value == AppUpdateDownloadModel.State.Idle &&
+            (lastUpdateCompletedAt == 0L || android.os.SystemClock.uptimeMillis() - lastUpdateCompletedAt >= 60_000L)) {
             requestUpdateCheck(manual = false)
         }
         if (BuildConfig.USER_CONFIGURABLE) {
@@ -502,7 +612,7 @@ class WeatherSettingsActivity : AppCompatActivity() {
                     lastUpdateCompletedAt=android.os.SystemClock.uptimeMillis()
                     renderUpdateStatus(result)
                     if(manual && lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
-                        if(result.status==AppUpdatePolicy.Status.NEW_VERSION) openUpdateDownloadPage()
+                        if(result.status==AppUpdatePolicy.Status.NEW_VERSION) confirmUpdateDownload(result)
                         else Toast.makeText(this,when(result.status) {
                             AppUpdatePolicy.Status.CURRENT -> "已是最新版本"
                             AppUpdatePolicy.Status.UNAVAILABLE -> "暂时无法获取版本信息，请稍后重试"
@@ -514,9 +624,93 @@ class WeatherSettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun openUpdateDownloadPage() {
-        runCatching { startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(AppUpdatePolicy.DOWNLOAD_PAGE))) }
-            .onFailure {Toast.makeText(this,"未找到浏览器，请在 GitHub 查看 SIAKNG/yunsong-weather 的 Releases",Toast.LENGTH_LONG).show()}
+    private fun confirmUpdateDownload(result: AppUpdatePolicy.Result) {
+        val apk = result.apk ?: return
+        if (updateConfirmDialog?.isShowing == true) return
+        val size = String.format(java.util.Locale.getDefault(), "%.1f", apk.size / (1024.0 * 1024))
+        updateConfirmDialog = AlertDialog.Builder(this)
+            .setTitle("发现新版本 " + result.version)
+            .setMessage("下载约 " + size + " MB。下载完成后，将打开 Android 安装确认。")
+            .setNegativeButton("稍后", null)
+            .setPositiveButton("下载更新") { _, _ -> updateDownload.start(result.version, apk) }
+            .show()
+    }
+
+    private fun renderUpdateDownload(state: AppUpdateDownloadModel.State) {
+        val button = findViewById<View>(R.id.btnCheckUpdate)
+        val label = findViewById<TextView>(R.id.tvUpdateStatus)
+        val arrow = findViewById<View>(R.id.updateDownloadArrow)
+        if (state !is AppUpdateDownloadModel.State.Downloading) {
+            updateProgressDialog?.dismiss()
+            updateProgressDialog = null
+            updateProgressBar = null
+        }
+        when (state) {
+            is AppUpdateDownloadModel.State.Downloading -> {
+                label.text = "正在下载 " + state.percent + "%"
+                button.contentDescription = label.text
+                arrow.visibility = View.GONE
+                if (updateProgressDialog == null) {
+                    val padding = (20 * resources.displayMetrics.density).toInt()
+                    val layout = LinearLayout(this).apply { setPadding(padding, padding, padding, 0) }
+                    updateProgressBar = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+                        isIndeterminate = false
+                        max = 100
+                        layout.addView(this, LinearLayout.LayoutParams(-1, -2))
+                    }
+                    updateProgressDialog = AlertDialog.Builder(this).setTitle("正在下载 " + state.version)
+                        .setView(layout).setCancelable(false)
+                        .setNegativeButton("取消下载") { _, _ -> updateDownload.cancel() }.show()
+                }
+                updateProgressBar?.progress = state.percent
+            }
+            is AppUpdateDownloadModel.State.Ready -> {
+                label.text = "下载完成 · 安装 " + state.version
+                button.contentDescription = label.text
+                arrow.visibility = View.VISIBLE
+                if (updateDownload.takeAutoInstall()) installReadyUpdate()
+            }
+            AppUpdateDownloadModel.State.Failed -> {
+                label.text = "下载未完成 · 点击重试"
+                button.contentDescription = label.text
+                Toast.makeText(this, "更新下载或校验失败，请重试", Toast.LENGTH_LONG).show()
+                updateDownload.clearFailure()
+            }
+            AppUpdateDownloadModel.State.Idle -> {
+                if (!checkingUpdate && label.text.startsWith("正在下载")) {
+                    label.text = "下载已取消 · 点击重试"
+                    button.contentDescription = label.text
+                }
+            }
+        }
+    }
+
+    private fun canInstallUpdate(): Boolean =
+        Build.VERSION.SDK_INT < 26 || packageManager.canRequestPackageInstalls()
+
+    private fun installReadyUpdate() {
+        val update = updateDownload.state.value as? AppUpdateDownloadModel.State.Ready ?: return
+        if (!update.file.isFile) {
+            updateDownload.clearMissingPackage()
+            requestUpdateCheck(manual = true)
+            return
+        }
+        if (!canInstallUpdate()) {
+            AlertDialog.Builder(this).setTitle("允许安装更新")
+                .setMessage("首次安装更新时，请在系统设置中允许云松天气安装应用。返回后即可继续安装。")
+                .setNegativeButton("稍后", null)
+                .setPositiveButton("前往授权") { _, _ ->
+                    runCatching {
+                        updateInstallPermission.launch(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            Uri.fromParts("package", packageName, null)))
+                    }.onFailure {
+                        Toast.makeText(this, "请在系统设置中允许云松天气安装应用", Toast.LENGTH_LONG).show()
+                    }
+                }.show()
+            return
+        }
+        runCatching { startActivity(AppUpdateInstaller.installationIntent(this, update.file)) }
+            .onFailure { Toast.makeText(this, "无法打开系统安装器，请稍后重试", Toast.LENGTH_LONG).show() }
     }
 
     internal fun renderUpdateStatus(result: AppUpdatePolicy.Result) {
@@ -528,13 +722,15 @@ class WeatherSettingsActivity : AppCompatActivity() {
                 if (result.status == AppUpdatePolicy.Status.NEW_VERSION) R.color.accent else R.color.text_secondary))
             setTypeface(null, if (result.status == AppUpdatePolicy.Status.NEW_VERSION) Typeface.BOLD else Typeface.NORMAL)
         }
-        findViewById<View>(R.id.btnCheckUpdate).contentDescription = if(result.status==AppUpdatePolicy.Status.NEW_VERSION) "检查更新，${result.label}，检查后前往下载页" else "检查更新，${result.label}，点击重新检查"
+        findViewById<View>(R.id.btnCheckUpdate).contentDescription = if(result.status==AppUpdatePolicy.Status.NEW_VERSION) "检查更新，${result.label}，点击查看更新" else "检查更新，${result.label}，点击重新检查"
     }
 
     override fun onDestroy() {
         updateGeneration++
         updateUi.removeCallbacksAndMessages(null)
         updateExecutor.shutdownNow()
+        updateConfirmDialog?.dismiss()
+        updateProgressDialog?.dismiss()
         super.onDestroy()
     }
 

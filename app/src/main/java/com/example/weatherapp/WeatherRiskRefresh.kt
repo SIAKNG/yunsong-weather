@@ -233,19 +233,23 @@ internal object WeatherRiskRefresh {
         publishRain(context, city, values, values.indices.map { now + (it * interval * 60_000L).toLong() }, now)
     }
 
-    private fun publishRain(context: Context, city: CityPage, values: List<Double>, times: List<Long>, now: Long) {
-        val first = values.indexOfFirst { it > WeatherRainPresentation.RAIN_THRESHOLD_MM_PER_HOUR }
-        if (first < 0) {
-            WeatherNotificationCenter.reconcileRain(context, null)
-            return
-        }
+    internal fun publishRain(context: Context, city: CityPage, values: List<Double>, times: List<Long>, now: Long) {
+        val interval = times.zipWithNext().map { (a, b) -> b - a }.maxOrNull() ?: 60_000L
+        val forecast = try { RainForecast(times, values, interval) }
+            catch (_: IllegalArgumentException) { throw IOException("Minute forecast invalid") }
+        if (times.first() > now + 300_000L || forecast.horizonEnd <= now)
+            throw IOException("Minute forecast not current")
+        val first = forecast.wetIndexes(now).firstOrNull()
         val peak = values.indices.maxByOrNull { values[it] }!!
-        val category = WeatherRainPresentation.category(values[peak])
-        val summary = WeatherRainPresentation.summary(values, times, category, now)
-        if (summary.isBlank()) throw IOException("Rain summary unavailable")
+        val category = if (first == null) "无雨" else WeatherRainPresentation.category(values[peak])
+        val summary = if (first == null) "" else WeatherRainPresentation.summary(values, times, category, now)
+        if (first != null && summary.isBlank()) throw IOException("Rain summary unavailable")
+        // Verified dry forecasts reach the ledger to produce one ending notification.
         WeatherNotificationCenter.reconcileRain(context, WeatherRainEvent(
             cityKey = WeatherNotificationLedger.cityKey(city), locationName = city.preciseRainNotificationLocation(),
-            firstRainAt = times[first], category = category, categoryRank = WeatherRainPresentation.categoryRank(category),
-            summary = summary, peak = WeatherRainPresentation.peakText(times[peak], values[peak], category)))
+            firstRainAt = first?.let { times[it] } ?: now, category = category,
+            categoryRank = if (first == null) -1 else WeatherRainPresentation.categoryRank(category),
+            summary = summary, peak = if (first == null) "" else WeatherRainPresentation.peakText(times[peak], values[peak], category),
+            forecast = forecast), now)
     }
 }

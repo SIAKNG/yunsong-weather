@@ -25,7 +25,7 @@ internal object WeatherWidgetSummary {
         val rainAdvice = when {
             probability == null -> ForecastSummaryAdvice.MISSING
             daily?.rainPercent != null -> ForecastSummaryAdvice.dailyRain(probability)
-            rainRows.size == hours.size && rainRows.all { it.second == 0 } -> "出行留意天气变化"
+            rainRows.size == hours.size && rainRows.all { it.second == 0 } -> ForecastSummaryAdvice.hourlyRain(0)
             else -> ForecastSummaryAdvice.hourlyRain(probability)
         }
         val start = ForecastDayHistoryPolicy.startOfDay(now)

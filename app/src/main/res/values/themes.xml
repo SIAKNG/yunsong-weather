@@ -7,6 +7,15 @@
 
     <style name="Theme.WeatherApp" parent="Base.Theme.WeatherApp" />
 
+    <style name="Base.Theme.WeatherApp.Home" parent="Theme.WeatherApp">
+        <item name="android:windowBackground">@color/weather_launch_blue</item>
+        <item name="android:statusBarColor">@color/weather_launch_blue</item>
+        <item name="android:navigationBarColor">@color/weather_launch_blue</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="Theme.WeatherApp.Home" parent="Base.Theme.WeatherApp.Home" />
+
     <!-- 详情横滑交接期间短暂透出上一页，承载双内容层的连续过渡。 -->
     <style name="Theme.WeatherApp.DetailTransition" parent="Theme.WeatherApp">
         <item name="android:windowIsTranslucent">true</item>

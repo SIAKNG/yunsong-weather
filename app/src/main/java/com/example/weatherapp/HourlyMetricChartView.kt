@@ -132,8 +132,9 @@ class HourlyMetricChartView @JvmOverloads constructor(
         // 纵轴数值放到右侧图内，避免再为标签留下导致曲线缩短的空白列。
         val left = dp(2f)
         val right = width - dp(2f)
-        val top = dp(8f)
-        val bottom = height - dp(30f)
+        val top = maxOf(dp(8f), -axisPaint.ascent() - dp(3f))
+        val captionRows = if (wideCaptions()) 2 else 1
+        val bottom = height - maxOf(dp(30f), captionRows * (captionPaint.fontSpacing + dp(2f)) + dp(12f))
         if (right <= left || bottom <= top) return
         val axis = axisRange()
         val yOf: (Double) -> Float = { raw ->
@@ -184,12 +185,14 @@ class HourlyMetricChartView @JvmOverloads constructor(
             canvas.drawText(axisText(value), right - dp(3f), y + dp(3f), axisPaint)
         }
         val labelIndices = values.indices.filter { it % 6 == 0 || it == values.lastIndex }
-        labelIndices.forEach { index ->
+        labelIndices.forEachIndexed { tick, index ->
             val x = xOf(index)
             canvas.drawLine(x, top, x, bottom, guidePaint)
             val label = times.getOrNull(index)?.let { timeFormat.format(Date(it)) }.orEmpty()
-            val safeX = x.coerceIn(dp(16f), width - dp(16f))
-            canvas.drawText(label, safeX, height - dp(8f), captionPaint)
+            val half = (captionPaint.measureText(label) / 2f + dp(1f)).coerceAtMost(width / 2f)
+            val safeX = x.coerceIn(half, width - half)
+            val offset = if (wideCaptions() && tick % 2 == 0) captionPaint.fontSpacing + dp(2f) else 0f
+            canvas.drawText(label, safeX, height - dp(8f) - offset, captionPaint)
         }
     }
 
@@ -397,5 +400,7 @@ class HourlyMetricChartView @JvmOverloads constructor(
     }
 
     private fun dp(value: Float): Float = value * resources.displayMetrics.density
-    private fun sp(value: Float): Float = value * resources.displayMetrics.scaledDensity
+    private fun wideCaptions(): Boolean = (captionPaint.measureText("00:00") + dp(4f)) * 6f > width
+
+    private fun sp(value: Float): Float = resources.weatherSp(value)
 }

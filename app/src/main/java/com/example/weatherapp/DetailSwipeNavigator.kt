@@ -70,6 +70,16 @@ class DetailScrollView @JvmOverloads constructor(
         this.onRelease = onRelease
     }
 
+    override fun requestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
+        // A nested chart may reserve horizontal gestures from the pager. This scroll view
+        // can still take vertical drags so the rest of a long detail page stays reachable.
+        if (disallowIntercept && (canScrollVertically(1) || canScrollVertically(-1))) {
+            parent?.requestDisallowInterceptTouchEvent(true)
+        } else {
+            super.requestDisallowInterceptTouchEvent(disallowIntercept)
+        }
+    }
+
     override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
@@ -81,6 +91,7 @@ class DetailScrollView @JvmOverloads constructor(
                     return true
                 }
                 if (horizontalDrag) return true
+                if (abs(event.rawX - downX) > abs(event.rawY - downY)) return false
             }
         }
         return super.onInterceptTouchEvent(event)
@@ -130,7 +141,8 @@ class DetailScrollView @JvmOverloads constructor(
     private fun beginHorizontalDrag(event: MotionEvent): Boolean {
         val dx = event.rawX - downX
         val dy = event.rawY - downY
-        if (startedInExcluded || horizontalDrag || abs(dx) <= slop || abs(dx) <= abs(dy) * 1.15f) {
+        // Standalone detail pages have no pager. Leave horizontal drags to their charts.
+        if (onProgress == null || startedInExcluded || horizontalDrag || abs(dx) <= slop || abs(dx) <= abs(dy) * 1.15f) {
             return false
         }
         horizontalDrag = true

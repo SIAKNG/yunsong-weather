@@ -34,11 +34,15 @@ class WeatherPermissionCoordinator(private val activity: ComponentActivity) {
         ActivityResultContracts.RequestPermission()
     ) { finishNeed() }
 
-    fun requestColdStart(onFinished: (foregroundGranted: Boolean) -> Unit) {
-        // 首次启动只申请界面确实需要的权限；后台定位与精确闹钟不再阻断天气浏览。
-        start(listOf(Need.FOREGROUND_LOCATION, Need.NOTIFICATIONS)) {
-            onFinished(hasForegroundLocation(activity))
+    fun requestColdStart(onLocationReady: () -> Unit, onFinished: () -> Unit) {
+        requestForegroundLocation {
+            onLocationReady()
+            start(listOf(Need.NOTIFICATIONS)) { onFinished() }
         }
+    }
+
+    fun requestForegroundLocation(onFinished: () -> Unit) {
+        start(listOf(Need.FOREGROUND_LOCATION)) { onFinished() }
     }
 
     fun requestForReminder(type: ReminderType, onFinished: (Boolean) -> Unit) {

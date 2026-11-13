@@ -1,21 +1,24 @@
 package com.example.weatherapp
 
-import org.junit.Assert.*
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FreeWeatherNoticePolicyTest {
-    @Test fun firstFreeEntryShowsNotice() {
-        assertTrue(FreeWeatherNoticePolicy.shouldShow("open_meteo","r0:0",null))
+    @Test fun freeWeatherRemindsOncePerEntry() {
+        assertTrue(FreeWeatherNoticePolicy.shouldShow("open_meteo", false, true, null))
+        assertTrue(FreeWeatherNoticePolicy.shouldShow("open_meteo", false, true, true))
+        assertFalse(FreeWeatherNoticePolicy.shouldShow("open_meteo", false, false, true))
     }
-    @Test fun refreshingOrChangingCityDoesNotRepeatNotice() {
-        assertFalse(FreeWeatherNoticePolicy.shouldShow("open_meteo","r0:0","r0:0"))
+
+    @Test fun clearingPersonalWeatherRemindsWithinSameEntry() {
+        assertTrue(FreeWeatherNoticePolicy.shouldShow("open_meteo", false, false, false))
     }
-    @Test fun clearingOrReturningFromConfigurationShowsItAgain() {
-        assertTrue(FreeWeatherNoticePolicy.shouldShow("open_meteo","r1:0","r0:0"))
-        assertTrue(FreeWeatherNoticePolicy.shouldShow("open_meteo","r0:1","r0:0"))
-    }
-    @Test fun personalSourcesNeverShowFreeSourceNotice() {
-        for (source in listOf("caiyun","qweather"))
-            assertFalse(FreeWeatherNoticePolicy.shouldShow(source,"r1:1",null))
+
+    @Test fun optOutAndPersonalSourcesSuppressNotice() {
+        assertFalse(FreeWeatherNoticePolicy.shouldShow("open_meteo", true, true, false))
+        for (source in listOf("caiyun", "qweather")) {
+            assertFalse(FreeWeatherNoticePolicy.shouldShow(source, false, true, false))
+        }
     }
 }

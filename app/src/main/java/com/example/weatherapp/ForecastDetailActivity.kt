@@ -22,7 +22,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
@@ -37,10 +36,10 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * 未来逐小时详情：同一条横向时间轴承载全部可用指标，纵向内容固定在一屏内。
+ * 未来逐小时详情：同一条横向时间轴承载全部可用指标，纵向内容按实际高度滚动。
  * 中央指示线属于视口而非时间轴，因此横滑时只移动数据，不移动选择线。
  */
-class ForecastDetailActivity : AppCompatActivity() {
+class ForecastDetailActivity : WeatherActivity() {
     private lateinit var pager: androidx.viewpager2.widget.ViewPager2
     private lateinit var days: List<ForecastDayPage>
     private lateinit var dateStrip: HorizontalScrollView
@@ -48,6 +47,7 @@ class ForecastDetailActivity : AppCompatActivity() {
     private val chips=ArrayList<TextView>()
     private val pages=HashMap<String,ForecastWeatherPage>()
     private val scrollPositions=HashMap<String,Int>()
+    private val verticalPositions = HashMap<String, Int>()
     private val metricSelections=HashMap<String,String>()
     private var selectedIndex=0
     private var datePosition=0f
@@ -70,6 +70,7 @@ class ForecastDetailActivity : AppCompatActivity() {
         days=DailyForecastDetailPolicy.pages(hours,daily)
         selectedIndex=DailyForecastDetailPolicy.initialIndex(days,savedInstanceState?.getString("selected_day") ?: intent.getStringExtra("selected_day"))
         days.forEach {day ->savedInstanceState?.getInt("scroll:${day.date}")?.let {scrollPositions[day.date]=it}}
+        days.forEach { day -> savedInstanceState?.getInt("vertical:${day.date}")?.let { verticalPositions[day.date] = it } }
         days.forEach {day ->savedInstanceState?.getString("metric:${day.date}")?.let {metricSelections[day.date]=it}}
         val root=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL;setBackgroundColor(ContextCompat.getColor(this@ForecastDetailActivity,R.color.page_bg))}
         setContentView(root)
@@ -86,7 +87,7 @@ class ForecastDetailActivity : AppCompatActivity() {
         header.addView(LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
             addView(label("",18f).apply {
-                tag="daily_detail_location";WeatherAddressFormatter.bind(this,intent.getStringExtra("city").orEmpty());typeface=Typeface.DEFAULT_BOLD
+                tag="daily_detail_location";WeatherAddressFormatter.bindDetail(this,intent.getStringExtra("city").orEmpty());typeface=Typeface.DEFAULT_BOLD
             },LinearLayout.LayoutParams(-1,-2))
             addView(label(if(futureDays>0) "未来${futureDays}日天气详情" else "多日天气详情",14f,true),LinearLayout.LayoutParams(-1,-2))
         },LinearLayout.LayoutParams(0,-2,1f))
@@ -102,7 +103,10 @@ class ForecastDetailActivity : AppCompatActivity() {
         val chipRow=LinearLayout(this).apply {gravity=Gravity.CENTER_VERTICAL;setPadding(0,dp(3),0,dp(3))}
         dateStrip.addView(chipRow,FrameLayout.LayoutParams(-2,-1))
         dateHost.addView(dateStrip,FrameLayout.LayoutParams(-1,-1))
-        root.addView(dateHost,LinearLayout.LayoutParams(-1,dp(54)).apply {setMargins(dp(20),0,dp(20),0)})
+        root.addView(dateHost,LinearLayout.LayoutParams(-1, maxOf(dp(54), android.graphics.Paint().apply {
+            typeface = Typeface.DEFAULT_BOLD
+            textSize = resources.weatherSp(14.4f)
+        }.fontSpacing.times(2).roundToInt() + dp(18))).apply {setMargins(dp(20),0,dp(20),0)})
         days.forEachIndexed {index,day ->
             val date=SimpleDateFormat("yyyy-MM-dd",Locale.US).parse(day.date)!!
             val chip=label(SimpleDateFormat("M/d\nEEE",Locale.CHINA).format(date),12f).apply {
@@ -134,7 +138,9 @@ class ForecastDetailActivity : AppCompatActivity() {
                         scrollPositions[currentDate]=-1
                         pages[currentDate]?.resetToCurrent()
                         pager.setCurrentItem(days.indexOfFirst {it.date==currentDate},true)
-                    },initialMetric=metricSelections[day.date],onMetricChanged={metricSelections[day.date]=it})
+                    },initialMetric=metricSelections[day.date],onMetricChanged={metricSelections[day.date]=it},
+                    initialScrollY=verticalPositions[day.date] ?: 0,
+                    onVerticalScroll={verticalPositions[day.date]=it})
                 pages[day.date]=page;holder.host.addView(page.view,FrameLayout.LayoutParams(-1,-1))
             }
             override fun onViewRecycled(holder: DayHolder) {holder.date?.let {pages.remove(it)};holder.host.removeAllViews()}
@@ -149,7 +155,14 @@ class ForecastDetailActivity : AppCompatActivity() {
         dateStrip.setOnScrollChangeListener {_,_,_,_,_ ->updateDates()}
         dateHost.addOnLayoutChangeListener {_,l,_,r,_,ol,_,or,_->
             if(r-l!=or-ol && r>l) {
-                chips.forEach {it.layoutParams=it.layoutParams.apply {width=(r-l)/7}}
+                val activePaint = Paint().apply {
+                    typeface = Typeface.DEFAULT_BOLD
+                    textSize = resources.weatherSp(14.4f)
+                }
+                val width = chips.maxOfOrNull { chip ->
+                    chip.text.lines().maxOf { activePaint.measureText(it) }.roundToInt() + dp(12)
+                } ?: dp(48)
+                chips.forEach { it.layoutParams = it.layoutParams.apply { this.width = maxOf((r-l)/7, width) } }
                 dateHost.post {updateDates()}
             }
         }
@@ -180,6 +193,7 @@ class ForecastDetailActivity : AppCompatActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         days.getOrNull(selectedIndex)?.let {outState.putString("selected_day",it.date)}
         scrollPositions.forEach {(date,x) ->outState.putInt("scroll:$date",x)}
+        verticalPositions.forEach { (date, y) -> outState.putInt("vertical:$date", y) }
         metricSelections.forEach {(date,metric) ->outState.putString("metric:$date",metric)}
         super.onSaveInstanceState(outState)
     }

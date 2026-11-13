@@ -11,6 +11,7 @@ import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.View
+import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import androidx.annotation.ColorInt
@@ -50,7 +51,8 @@ internal class HourlyForecastSummaryView(
     @ColorInt private val primary: Int,
     @ColorInt private val secondary: Int,
     @ColorInt private val divider: Int,
-    private val metrics: List<HourlyForecastSummaryMetric>
+    private val metrics: List<HourlyForecastSummaryMetric>,
+    private val compactTemperature: Boolean
 ) : View(context) {
     internal val metricCount: Int get() = metrics.size
 
@@ -64,51 +66,13 @@ internal class HourlyForecastSummaryView(
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textAlign = Paint.Align.LEFT
-        typeface = Typeface.DEFAULT
-    }
-    private var temperatureHeight = 0f
-    private var rowHeights = floatArrayOf(0f, 0f)
-    private var detailLayout: StaticLayout? = null
-    private var temperatureAdviceLayout: StaticLayout? = null
-    private var adviceLayouts: List<StaticLayout> = emptyList()
-
-    private fun paragraph(text: String, width: Float): StaticLayout {
-        val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = secondary
-            textSize = sp(9.2f)
-        }
-        return StaticLayout.Builder.obtain(text, 0, text.length, paint, width.roundToInt().coerceAtLeast(1))
-            .setIncludePad(false).setLineSpacing(dp(1.5f), 1f).build()
-    }
-
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val measuredWidth = MeasureSpec.getSize(widthMeasureSpec)
-        val pad = dp(14f)
-        if (metrics.size >= 5) {
-            val textWidth = (measuredWidth - pad * 2f) * .56f - dp(12f)
-            detailLayout = paragraph(metrics[0].detail, textWidth)
-            temperatureAdviceLayout = paragraph(metrics[0].advice, textWidth)
-            temperatureHeight = maxOf(dp(80f), dp(49f) + detailLayout!!.height + dp(3f) + temperatureAdviceLayout!!.height)
-            val cellWidth = measuredWidth / 2f - pad - dp(19f)
-            adviceLayouts = metrics.drop(1).map { paragraph("${it.detail} · ${it.advice}", cellWidth - dp(4f)) }
-            rowHeights = floatArrayOf(
-                dp(48f) + maxOf(adviceLayouts[0].height, adviceLayouts[1].height),
-                dp(48f) + maxOf(adviceLayouts[2].height, adviceLayouts[3].height)
-            )
-        }
-        val desired = (pad * 2f + temperatureHeight + dp(2f) + rowHeights.sum()).roundToInt()
-        setMeasuredDimension(measuredWidth, resolveSize(desired, heightMeasureSpec))
-    }
-
-    private fun drawParagraph(canvas: Canvas, layout: StaticLayout?, x: Float, y: Float) {
-        if (layout == null) return
-        val save = canvas.save()
-        canvas.translate(x, y)
-        layout.draw(canvas)
-        canvas.restoreToCount(save)
-    }
+    private data class Paragraph(val layout: StaticLayout, val x: Float, val y: Float)
+    private data class Symbol(val metric: HourlyForecastSummaryMetric, val x: Float, val y: Float)
+    private val paragraphs = mutableListOf<Paragraph>()
+    private val symbols = mutableListOf<Symbol>()
+    private val dividers = mutableListOf<Float>()
+    private val track = RectF()
+    private var metricGridDivider: Float? = null
 
     init {
         background = GradientDrawable().apply {
@@ -116,7 +80,7 @@ internal class HourlyForecastSummaryView(
             cornerRadius = dp(24f)
         }
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
-        contentDescription = metrics.joinToString(separator = "。") { metric ->
+        contentDescription = metrics.joinToString("。") { metric ->
             buildString {
                 append("${metric.label} ${metric.value}，${metric.detail}，${metric.advice}")
                 metric.currentValue?.let { append("，当前温度 $it") }
@@ -124,131 +88,146 @@ internal class HourlyForecastSummaryView(
         }
     }
 
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        if (metrics.size < 5 || width <= 0 || height <= 0) return
-        val pad = dp(14f)
-        val dividerY = pad + temperatureHeight + dp(2f)
-        val halfWidth = width / 2f
-        val contentBottom = height - pad
-        val bottomTop = dividerY
-        val cellInset = dp(7f)
-        val columnGap = dp(12f)
-        val rowDividerY = bottomTop + (contentBottom - bottomTop) * rowHeights[0] / rowHeights.sum().coerceAtLeast(1f)
-
-        drawTemperature(canvas, metrics[0], RectF(pad, pad, width - pad, pad + temperatureHeight))
-
-        strokePaint.strokeWidth = dp(.7f)
-        strokePaint.color = divider
-        canvas.drawLine(pad, dividerY, width - pad, dividerY, strokePaint)
-        canvas.drawLine(halfWidth, bottomTop + dp(6f), halfWidth, contentBottom - dp(6f), strokePaint)
-        canvas.drawLine(pad + cellInset, rowDividerY, halfWidth - dp(8f), rowDividerY, strokePaint)
-        canvas.drawLine(halfWidth + dp(8f), rowDividerY, width - pad - cellInset, rowDividerY, strokePaint)
-
-        drawMetric(canvas, metrics[1], RectF(pad + cellInset, bottomTop + dp(4f), halfWidth - columnGap, rowDividerY - dp(4f)), adviceLayouts[0])
-        drawMetric(canvas, metrics[2], RectF(halfWidth + columnGap, bottomTop + dp(4f), width - pad - cellInset, rowDividerY - dp(4f)), adviceLayouts[1])
-        drawMetric(canvas, metrics[3], RectF(pad + cellInset, rowDividerY + dp(4f), halfWidth - columnGap, contentBottom - dp(4f)), adviceLayouts[2])
-        drawMetric(canvas, metrics[4], RectF(halfWidth + columnGap, rowDividerY + dp(4f), width - pad - cellInset, contentBottom - dp(4f)), adviceLayouts[3])
+    private fun paragraph(text: String, x: Float, y: Float, width: Float, size: Float, color: Int,
+                          bold: Boolean = false, alignment: Layout.Alignment = Layout.Alignment.ALIGN_NORMAL,
+                          fitValue: Boolean = false): Float {
+        if (text.isBlank()) return y
+        val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = color
+            textSize = resources.weatherSp(size)
+            typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+        }
+        val availableWidth = width.toInt().coerceAtLeast(1)
+        if (fitValue) {
+            val measured = paint.measureText(text)
+            if (measured > availableWidth) {
+                paint.textSize *= (availableWidth / measured).coerceAtLeast(.86f)
+            }
+        }
+        val layout = StaticLayout.Builder.obtain(text, 0, text.length, paint, availableWidth)
+            .setAlignment(alignment).setLineSpacing(dp(1.5f), 1f).build()
+        paragraphs += Paragraph(layout, x, y)
+        return y + layout.height
     }
 
-    private fun drawTemperature(canvas: Canvas, metric: HourlyForecastSummaryMetric, rect: RectF) {
-        textPaint.color = secondary
-        textPaint.textSize = sp(10f)
-        textPaint.typeface = Typeface.DEFAULT
-        canvas.drawText(metric.label, rect.left, rect.top + dp(14f), textPaint)
-
-        textPaint.color = metric.color
-        textPaint.textSize = sp(19.5f)
-        textPaint.typeface = Typeface.DEFAULT_BOLD
-        canvas.drawText(metric.value, rect.left, rect.top + dp(40f), textPaint)
-
-        // 温度轨道按本次最低至最高温度均匀映射浅蓝绿—黄—橙—红，不按人体舒适区着色。
-        val values = metric.value.split("–", limit = 2)
-        val low = values.getOrNull(0) ?: "—"
-        val high = values.getOrNull(1) ?: low
-        val trackLeft = rect.left + rect.width() * .56f
-        val trackRight = rect.right
-        val trackY = rect.top + dp(39f)
-        strokePaint.strokeWidth = dp(4f)
-        strokePaint.color = ColorUtils.setAlphaComponent(metric.color, 72)
-        canvas.drawLine(trackLeft, trackY, trackRight, trackY, strokePaint)
-        val minC = metric.minimumTemperatureCelsius
-        val maxC = metric.maximumTemperatureCelsius
-        strokePaint.shader = if (minC != null && maxC != null) {
-            LinearGradient(trackLeft, trackY, trackRight, trackY, TEMPERATURE_RANGE_COLORS, null, Shader.TileMode.CLAMP)
-        } else null
-        strokePaint.color = Color.WHITE
-        canvas.drawLine(trackLeft, trackY, trackRight, trackY, strokePaint)
-        strokePaint.shader = null
-        fillPaint.color = ColorUtils.setAlphaComponent(if (minC != null && maxC != null) TEMPERATURE_RANGE_COLORS.first() else metric.color, 220)
-        canvas.drawCircle(trackLeft, trackY, dp(4f), fillPaint)
-        fillPaint.color = if (minC != null && maxC != null) TEMPERATURE_RANGE_COLORS.last() else metric.color
-        canvas.drawCircle(trackRight, trackY, dp(4f), fillPaint)
-
-        metric.currentProgress?.let { progress ->
-            val markerX = trackLeft + (trackRight - trackLeft) * progress.coerceIn(0f, 1f)
-            val currentColor = if (minC != null && maxC != null) {
-                temperatureRangeColor(progress)
-            } else metric.color
-            val selectedColor = selectedDataColor(currentColor)
-            ChartSelectionMarker.draw(
-                canvas = canvas,
-                x = markerX,
-                y = trackY,
-                color = selectedColor,
-                darkTheme = WeatherSettings.isDarkTheme(context),
-                density = resources.displayMetrics.density
-            )
-
-            textPaint.color = selectedColor
-            textPaint.textSize = sp(9.3f)
-            textPaint.typeface = Typeface.DEFAULT_BOLD
-            val currentLabel = "当前 ${metric.currentValue.orEmpty()}"
-            val labelWidth = textPaint.measureText(currentLabel)
-            val safeX = markerX.coerceIn(trackLeft + labelWidth / 2f, trackRight - labelWidth / 2f)
-            textPaint.textAlign = Paint.Align.CENTER
-            canvas.drawText(currentLabel, safeX, rect.top + dp(30f), textPaint)
-            textPaint.textAlign = Paint.Align.LEFT
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val panelWidth = MeasureSpec.getSize(widthMeasureSpec)
+        val pad = dp(14f)
+        val contentWidth = (panelWidth - pad * 2).coerceAtLeast(1f)
+        paragraphs.clear()
+        symbols.clear()
+        dividers.clear()
+        track.setEmpty()
+        metricGridDivider = null
+        var y = pad
+        val temperature = metrics.firstOrNull()
+        if (temperature != null && compactTemperature) {
+            y = layoutCompactTemperature(temperature, pad, contentWidth)
+        } else if (temperature != null) {
+            y = paragraph(temperature.label, pad, y, contentWidth, 10f, secondary)
+            y = paragraph(temperature.value, pad, y + dp(2f), contentWidth, 19.5f,
+                selectedDataColor(temperature.color), true)
+            val trackY = y + dp(12f)
+            track.set(pad + dp(5f), trackY, panelWidth - pad - dp(5f), trackY)
+            val current = temperature.currentValue?.let { "当前 $it" }.orEmpty()
+            y = paragraph(current, pad, y + dp(22f), contentWidth, 9.3f, primary, true)
+            y = paragraph(temperature.detail, pad, y + dp(2f), contentWidth, 9.6f, secondary)
+            y = paragraph(temperature.advice, pad, y + dp(2f), contentWidth, 9.6f, secondary)
         }
 
-        textPaint.color = secondary
-        textPaint.textSize = sp(8.6f)
-        textPaint.typeface = Typeface.DEFAULT
-        canvas.drawText("低 $low", trackLeft, rect.top + dp(62f), textPaint)
-        textPaint.textAlign = Paint.Align.RIGHT
-        canvas.drawText("高 $high", trackRight, rect.top + dp(62f), textPaint)
-        textPaint.textAlign = Paint.Align.LEFT
-        // 左半区分两行呈现未来两日范围与穿衣建议，避免长句被压成难读的一行。
-        textPaint.color = secondary
-        textPaint.textSize = sp(8.5f)
-        textPaint.typeface = Typeface.DEFAULT
-        drawParagraph(canvas, detailLayout, rect.left, rect.top + dp(49f))
-        drawParagraph(canvas, temperatureAdviceLayout, rect.left,
-            rect.top + dp(52f) + (detailLayout?.height ?: 0))
+        val columns = if (contentWidth < dp(254f) || resources.configuration.fontScale > 1.3f) 1 else 2
+        if (compactTemperature && columns == 2 && metrics.size > 1) metricGridDivider = y + dp(14f)
+        val gap = dp(14f)
+        val cellWidth = (contentWidth - gap * (columns - 1)) / columns
+        for (row in metrics.drop(1).chunked(columns)) {
+            dividers += y + dp(7f)
+            val top = y + dp(14f)
+            var rowBottom = top
+            row.forEachIndexed { index, metric ->
+                val left = pad + index * (cellWidth + gap)
+                val textLeft = left + dp(38f)
+                val titleWidth = cellWidth - (textLeft - left)
+                symbols += Symbol(metric, left + dp(15f), top + dp(16f))
+                val titleEnd = paragraph(metric.label, textLeft, top, titleWidth, 10f, secondary)
+                val value = if (compactTemperature && metric.kind == HourlyForecastSummaryKind.WIND) {
+                    // Keep km/h and m/s together when a narrow viewport needs the unit to wrap.
+                    metric.value.replace("/", "\u2060/\u2060")
+                } else metric.value
+                val valueEnd = paragraph(value, textLeft, titleEnd, titleWidth, 15.5f,
+                    selectedDataColor(metric.color), true, fitValue = compactTemperature)
+                rowBottom = maxOf(rowBottom, paragraph("${metric.detail} · ${metric.advice}", left,
+                    maxOf(valueEnd, top + dp(32f)) + dp(4f), cellWidth, 9.6f, secondary))
+            }
+            y = rowBottom
+        }
+        setMeasuredDimension(panelWidth, resolveSize((y + pad).roundToInt(), heightMeasureSpec))
     }
 
-    private fun drawMetric(canvas: Canvas, metric: HourlyForecastSummaryMetric, rect: RectF, advice: StaticLayout) {
-        // 四格采用等高行、等距分隔线。放大图形后，圆环高度与标题/数值两行高度相当，
-        // 建议单独落在下方，避免上排图标看起来比下排更靠近分隔线。
-        val iconCenterX = rect.left + dp(12f)
-        val iconCenterY = rect.top + dp(18f)
-        drawIcon(canvas, metric, iconCenterX, iconCenterY, dp(14f))
+    private fun layoutCompactTemperature(metric: HourlyForecastSummaryMetric, pad: Float, contentWidth: Float): Float {
+        // Match the earlier 48-hour card: roughly 56% for the text and 44% for the temperature scale.
+        val split = contentWidth * .56f
+        val textWidth = split - dp(6f)
+        val labelBottom = paragraph(metric.label, pad, pad, textWidth, 10f, secondary)
+        val valueTop = labelBottom + dp(2f)
+        val valueBottom = paragraph(metric.value, pad, valueTop, textWidth, 19.5f,
+            selectedDataColor(metric.color), true)
+        val detailBottom = paragraph(metric.detail, pad, valueBottom + dp(2f), textWidth, 9.6f, secondary)
+        val textBottom = paragraph(metric.advice, pad, detailBottom + dp(2f), textWidth, 9.6f, secondary)
 
-        val textLeft = rect.left + dp(38f)
-        textPaint.color = secondary
-        textPaint.textSize = sp(9.4f)
-        textPaint.typeface = Typeface.DEFAULT
-        canvas.drawText(ellipsize(metric.label, textPaint, rect.right - textLeft), textLeft, rect.top + dp(13f), textPaint)
+        val rightStart = pad + split
+        val rightWidth = contentWidth - split
+        val current = metric.currentValue?.let { "当前 $it" }.orEmpty()
+        val currentBottom = paragraph(current, rightStart, pad, rightWidth, 9.3f, primary, true,
+            Layout.Alignment.ALIGN_CENTER)
+        val trackY = maxOf(currentBottom + dp(10f), (valueTop + valueBottom) / 2f)
+        val markerInset = dp(8f)
+        track.set(rightStart + markerInset, trackY, pad + contentWidth - markerInset, trackY)
+        val range = metric.value.split('–', limit = 2)
+        if (range.size != 2) return maxOf(textBottom, trackY + dp(10f))
 
-        textPaint.color = metric.color
-        textPaint.textSize = sp(15.5f)
-        textPaint.typeface = Typeface.DEFAULT_BOLD
-        canvas.drawText(ellipsize(metric.value, textPaint, rect.right - textLeft), textLeft, rect.top + dp(33f), textPaint)
+        val endpointsTop = trackY + dp(8f)
+        val endpointWidth = rightWidth / 2f - dp(2f)
+        val lowBottom = paragraph("低 ${range.first()}", rightStart, endpointsTop, endpointWidth, 8.6f, secondary)
+        val highBottom = paragraph("高 ${range.last()}", rightStart + rightWidth - endpointWidth, endpointsTop,
+            endpointWidth, 8.6f, secondary, alignment = Layout.Alignment.ALIGN_OPPOSITE)
+        return maxOf(textBottom, lowBottom, highBottom)
+    }
 
-        textPaint.color = secondary
-        textPaint.textSize = sp(9.2f)
-        textPaint.typeface = Typeface.DEFAULT
-        drawParagraph(canvas, advice, rect.left + dp(2f), rect.top + dp(39f))
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        metrics.firstOrNull()?.let { drawTemperatureTrack(canvas, it) }
+        strokePaint.strokeWidth = dp(.7f)
+        strokePaint.color = divider
+        dividers.forEach { y -> canvas.drawLine(dp(14f), y, width - dp(14f), y, strokePaint) }
+        metricGridDivider?.let { top ->
+            canvas.drawLine(width / 2f, top, width / 2f, height - dp(14f), strokePaint)
+        }
+        symbols.forEach { drawIcon(canvas, it.metric, it.x, it.y, dp(13f)) }
+        paragraphs.forEach { paragraph ->
+            val save = canvas.save()
+            canvas.translate(paragraph.x, paragraph.y)
+            paragraph.layout.draw(canvas)
+            canvas.restoreToCount(save)
+        }
+    }
+
+    private fun drawTemperatureTrack(canvas: Canvas, metric: HourlyForecastSummaryMetric) {
+        if (track.right <= track.left) return
+        val hasRange = metric.minimumTemperatureCelsius != null && metric.maximumTemperatureCelsius != null
+        strokePaint.strokeWidth = dp(4f)
+        strokePaint.color = ColorUtils.setAlphaComponent(metric.color, 100)
+        if (hasRange) {
+            strokePaint.color = Color.WHITE
+            strokePaint.shader = LinearGradient(track.left, track.top, track.right, track.top,
+                TEMPERATURE_RANGE_COLORS, null, Shader.TileMode.CLAMP)
+        }
+        canvas.drawLine(track.left, track.top, track.right, track.top, strokePaint)
+        strokePaint.shader = null
+        metric.currentProgress?.let { progress ->
+            ChartSelectionMarker.draw(canvas, track.left + track.width() * progress.coerceIn(0f, 1f), track.top,
+                selectedDataColor(if (hasRange) temperatureRangeColor(progress) else metric.color),
+                WeatherSettings.isDarkTheme(context), resources.displayMetrics.density)
+        }
     }
 
     private fun temperatureRangeColor(progress: Float): Int {
@@ -337,15 +316,7 @@ internal class HourlyForecastSummaryView(
         }
     }
 
-    private fun ellipsize(text: String, paint: Paint, width: Float): String {
-        if (width <= 0f || paint.measureText(text) <= width) return text
-        val ellipsis = "…"
-        val count = paint.breakText(text, true, (width - paint.measureText(ellipsis)).coerceAtLeast(0f), null)
-        return text.take(count) + ellipsis
-    }
-
     private fun dp(value: Float): Float = value * resources.displayMetrics.density
-    private fun sp(value: Float): Float = value * resources.displayMetrics.scaledDensity
 
     private companion object {
         val TEMPERATURE_RANGE_COLORS = intArrayOf(

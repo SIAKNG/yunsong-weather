@@ -5,8 +5,8 @@ import org.junit.Test
 
 class ReleaseIdentityTest {
     @Test fun userApiIsIdentifiedInVersionNotLauncherBrand() {
-        assertEquals("1.4-userapi",BuildConfig.VERSION_NAME)
-        assertEquals(10,BuildConfig.VERSION_CODE)
+        assertEquals("1.5-userapi",BuildConfig.VERSION_NAME)
+        assertEquals(13,BuildConfig.VERSION_CODE)
         assertEquals("com.example.weatherapp.userapi",BuildConfig.APPLICATION_ID)
     }
 }

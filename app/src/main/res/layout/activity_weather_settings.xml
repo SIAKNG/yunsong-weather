@@ -305,6 +305,12 @@
                     android:background="?attr/selectableItemBackground" android:text="桌面小组件与状态排查"
                     android:textColor="@color/text_primary" android:textSize="15sp" android:textStyle="bold" />
                 <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
+                <TextView android:id="@+id/btnProblemDiagnostics" android:layout_width="match_parent"
+                    android:layout_height="wrap_content" android:minHeight="60dp" android:paddingVertical="16dp"
+                    android:background="?attr/selectableItemBackground" android:gravity="center_vertical"
+                    android:text="问题诊断与定位" android:textColor="@color/text_primary"
+                    android:textSize="15sp" android:textStyle="bold" />
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
                 <TextView android:id="@+id/btnAbout" android:layout_width="match_parent"
                     android:layout_height="wrap_content" android:minHeight="60dp" android:paddingVertical="16dp"
                     android:background="?attr/selectableItemBackground" android:gravity="center_vertical"

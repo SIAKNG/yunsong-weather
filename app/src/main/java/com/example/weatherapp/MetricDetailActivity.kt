@@ -8,7 +8,6 @@ import android.view.View
 import android.widget.TextView
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.android.material.color.DynamicColors
@@ -18,7 +17,7 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 /** 六张天气详情卡共用的 24 小时指标页面。 */
-open class MetricDetailActivity : AppCompatActivity(), DetailPageMotionHost {
+open class MetricDetailActivity : WeatherActivity(), DetailPageMotionHost {
     override fun onPostCreate(savedInstanceState: Bundle?) {
         super.onPostCreate(savedInstanceState)
         DetailCardEdges.apply(findViewById(android.R.id.content))

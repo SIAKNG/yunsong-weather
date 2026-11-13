@@ -10,7 +10,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:clipToPadding="false"
-        android:fillViewport="true"
+        android:fillViewport="false"
         android:overScrollMode="ifContentScrolls"
         android:scrollbars="none">
 
@@ -53,9 +53,7 @@
                         android:id="@+id/tvMetricDetailLocation"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:ellipsize="end"
                         android:gravity="center"
-                        android:maxLines="1"
                         android:textColor="@color/text_primary"
                         android:textSize="18sp"
                         android:textStyle="bold" />
@@ -103,12 +101,6 @@
                 android:textColor="@color/text_primary"
                 android:textSize="13sp" />
 
-            <!-- 页面存在额外可用高度时，将其均匀分配到内容段落之间，不在底部留下空白。 -->
-            <Space
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1" />
-
             <TextView
                 android:id="@+id/tvMetricDetailValue"
                 android:layout_width="match_parent"
@@ -124,7 +116,6 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="0dp"
                 android:lineSpacingExtra="1dp"
-                android:maxLines="2"
                 android:textColor="@color/text_secondary"
                 android:textSize="14sp" />
 
@@ -142,11 +133,6 @@
                 android:layout_width="match_parent"
                 android:layout_height="244dp"
                 android:layout_marginTop="2dp" />
-
-            <Space
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1" />
 
             <TextView
                 android:layout_width="match_parent"
@@ -168,11 +154,6 @@
                 android:textColor="@color/text_secondary"
                 android:textSize="13sp" />
 
-            <Space
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1" />
-
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -185,7 +166,7 @@
             <com.example.weatherapp.LifeAdviceStripView
                 android:id="@+id/metricLifeAdviceStrip"
                 android:layout_width="match_parent"
-                android:layout_height="84dp"
+                android:layout_height="wrap_content"
                 android:layout_marginTop="3dp"
                 android:background="@drawable/bg_metric_detail_panel" />
         </LinearLayout>

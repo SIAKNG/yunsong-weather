@@ -11,13 +11,12 @@ import android.widget.ListView
 import android.widget.TextView
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
 // 灾害预警详情页：每条预警一张卡片，标题按等级着色，正文与发布时间完整展示
-class AlertActivity : AppCompatActivity() {
+class AlertActivity : WeatherActivity() {
 
     private lateinit var listAlerts: ListView
     private lateinit var tvEmpty: TextView
@@ -44,7 +43,7 @@ class AlertActivity : AppCompatActivity() {
         ViewCompat.setOnApplyWindowInsetsListener(alertRoot) { v, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             // 列表背景延展至手势导航区，底部不再被非沉浸式导航底色截断。
-            v.setPadding(bars.left, bars.top, bars.right, 0)
+            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
 

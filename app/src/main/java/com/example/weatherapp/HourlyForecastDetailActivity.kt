@@ -3,7 +3,6 @@ package com.example.weatherapp
 import android.content.Context
 import android.content.ContextWrapper
 import android.app.Activity
-import android.view.MotionEvent
 import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Color
@@ -24,7 +23,6 @@ import android.widget.TextView
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.ColorInt
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
@@ -37,7 +35,7 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 /** The 48-hour activity and each daily page render the same summary and chart components. */
-class HourlyForecastDetailActivity : AppCompatActivity() {
+class HourlyForecastDetailActivity : WeatherActivity() {
     private lateinit var palette: HourlyForecastDetailPalette
     private fun dp(value: Int)=(value*resources.displayMetrics.density).roundToInt()
     override fun onPostCreate(savedInstanceState: Bundle?) {
@@ -80,7 +78,7 @@ class HourlyForecastDetailActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             addView(TextView(this@HourlyForecastDetailActivity).apply {
-                WeatherAddressFormatter.bind(this, intent.getStringExtra(EXTRA_CITY).orEmpty())
+                WeatherAddressFormatter.bindDetail(this, intent.getStringExtra(EXTRA_CITY).orEmpty())
                 textSize = 19f
                 typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.CENTER
@@ -118,7 +116,7 @@ class HourlyForecastDetailActivity : AppCompatActivity() {
     }
 }
 
-/** A reusable, one-screen forecast body. Every instance owns exactly one immutable day/window. */
+/** A reusable vertically scrolling forecast body. Every instance owns exactly one immutable day/window. */
 internal class ForecastWeatherPage(
     activity: Activity,
     private val points: List<ForecastHour>,
@@ -129,7 +127,9 @@ internal class ForecastWeatherPage(
     private val onScrollPosition: ((Int)->Unit)? = null,
     private val onReturnToCurrent: (()->Unit)? = null,
     private val initialMetric: String? = null,
-    private val onMetricChanged: ((String)->Unit)? = null
+    private val onMetricChanged: ((String)->Unit)? = null,
+    initialScrollY: Int = 0,
+    onVerticalScroll: ((Int) -> Unit)? = null
 ) : ContextWrapper(activity) {
     private fun dp(value: Int)=(value*resources.displayMetrics.density).roundToInt()
     private val palette=HourlyForecastDetailPalette.from(this,WeatherSettings.isDarkTheme(this))
@@ -145,12 +145,18 @@ internal class ForecastWeatherPage(
     val selectedMetric: String? get() = dailyPanel?.selectedMetric?.name
     private val periodLabel get()=if(day==null) "未来48小时" else "当日"
     val summaryMetrics=buildSummaryMetrics()
-    val view=LinearLayout(this).apply {
+    private val body = LinearLayout(this).apply {
         orientation=LinearLayout.VERTICAL;tag="forecast_page:${day?.date ?: "48h"}"
         setPadding(dp(20),dp(4),dp(20),dp(12))
         addSummary(this);addChartSection(this)
     }
-    init {DetailCardEdges.apply(view)}
+    val view = DetailScrollView(this).apply {
+        addView(body, FrameLayout.LayoutParams(-1, -2))
+        overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+        setOnScrollChangeListener { _, _, y, _, _ -> onVerticalScroll?.invoke(y) }
+        if (initialScrollY > 0) post { scrollTo(0, initialScrollY) }
+    }
+    init { DetailCardEdges.apply(body) }
     fun resetToCurrent() {
         dailyPanel?.resetToCurrent()
         if(::hourlyScroll.isInitialized) hourlyScroll.smoothScrollTo(0,0)
@@ -165,14 +171,15 @@ internal class ForecastWeatherPage(
             row.addView(sectionTitle("信息摘要"),LinearLayout.LayoutParams(0,-2,1f))
             val todayButton=FrostedActionButton(this).apply {
                 tag="forecast_return_today";text="返回今日";textSize=11f;gravity=Gravity.CENTER
+                minHeight = dp(32); setPadding(dp(10), dp(5), dp(10), dp(5))
                 setOnClickListener {onReturnToCurrent?.invoke() ?: resetToCurrent()}
             }
             DetailReturnCurrentButtonStyle.apply(todayButton,atToday || unavailable,palette.primary,palette.secondary,
                 ColorUtils.setAlphaComponent(palette.primary,28),resources.displayMetrics.density)
             todayButton.contentDescription=when {unavailable -> "暂无今日预报";atToday -> "已位于今日";else -> "返回今日天气"}
             ViewCompat.setStateDescription(todayButton,if(atToday || unavailable) "不可点击" else "可点击")
-            row.addView(todayButton,LinearLayout.LayoutParams(dp(76),dp(30)))
-            parent.addView(row,LinearLayout.LayoutParams(-1,dp(36)))
+            row.addView(todayButton,LinearLayout.LayoutParams(-2,-2))
+            parent.addView(row,LinearLayout.LayoutParams(-1,-2))
         }
         parent.addView(
             HourlyForecastSummaryView(
@@ -182,10 +189,9 @@ internal class ForecastWeatherPage(
                 primary = palette.primary,
                 secondary = palette.secondary,
                 divider = palette.grid,
-                metrics = summaryMetrics
+                metrics = summaryMetrics,
+                compactTemperature = day == null
             ),
-            // 摘要的建议文本需要可在一眼内读完；图表区域仍以 weight 占用其余高度，
-            // 因此增加摘要高度不会引入纵向滚动或页面底部空白。
             LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
         )
     }
@@ -403,26 +409,20 @@ internal class ForecastWeatherPage(
     private fun addChartSection(parent: LinearLayout) {
         if (day != null) {
             dailyPanel=DailyForecastMetricPanel(this,day,initialMetric,onMetricChanged,initialScrollX,onScrollPosition)
-                .also { parent.addView(it,LinearLayout.LayoutParams(-1,0,1f).apply {topMargin=dp(8)}) }
+                .also { parent.addView(it,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(8)}) }
             return
         }
-        parent.addView(buildLegend(), LinearLayout.LayoutParams(-1, dp(32)).apply { topMargin = dp(8) })
+        parent.addView(buildLegend(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         if(points.isEmpty()) {
             parent.addView(TextView(this).apply {
                 tag="forecast_empty_hours";text="当日逐小时数据暂未提供";gravity=Gravity.CENTER
                 textSize=14f;setTextColor(palette.secondary)
-            },LinearLayout.LayoutParams(-1,0,1f))
+            },LinearLayout.LayoutParams(-1,-2))
             return
         }
 
         val host = FrameLayout(this)
-        hourlyScroll = object : HorizontalScrollView(this) {
-            override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-                if(day != null && ::chart.isInitialized && chart.totalWidth > width)
-                    parent.requestDisallowInterceptTouchEvent(event.actionMasked != MotionEvent.ACTION_UP && event.actionMasked != MotionEvent.ACTION_CANCEL)
-                return super.dispatchTouchEvent(event)
-            }
-        }.apply {
+        hourlyScroll = HorizontalScrollView(this).apply {
             tag="forecast_hour_scroll"
             isHorizontalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
@@ -432,10 +432,10 @@ internal class ForecastWeatherPage(
             setPoints(points)
             setSelectedIndex(selectedIndex)
         }
-        // 横向滚动仅服务于时间轴；图表高度由一屏内容区的剩余空间分配。
-        hourlyScroll.addView(chart, ViewGroup.LayoutParams(chart.totalWidth, ViewGroup.LayoutParams.MATCH_PARENT))
-        host.addView(hourlyScroll, FrameLayout.LayoutParams(-1, -1))
-        parent.addView(host, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(3) })
+        // The time axis scrolls horizontally inside a chart with its own measured height.
+        hourlyScroll.addView(chart, ViewGroup.LayoutParams(chart.totalWidth, ViewGroup.LayoutParams.WRAP_CONTENT))
+        host.addView(hourlyScroll, FrameLayout.LayoutParams(-1, -2))
+        parent.addView(host, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(3) })
 
         hourlyScroll.setOnScrollChangeListener { _, scrollX, _, _, _ ->
             onScrollPosition?.invoke(scrollX)
@@ -464,7 +464,11 @@ internal class ForecastWeatherPage(
     }
 
     private fun buildLegend(): View = LinearLayout(this).apply {
+        val stacked = resources.configuration.fontScale > 1.25f || resources.configuration.screenWidthDp < 350
+        orientation = if (stacked) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
+        val items = LinearLayout(this@ForecastWeatherPage).apply { gravity = Gravity.CENTER_VERTICAL }
+        addView(items, if (stacked) LinearLayout.LayoutParams(-1, -2) else LinearLayout.LayoutParams(0, -2, 1f))
         contentDescription = if(day == null) "48小时指标图例" else "当日指标图例"
         listOf(
             Triple(if(day==null) "温度" else "温/体感", ForecastChartGradient.temperature, false),
@@ -473,7 +477,7 @@ internal class ForecastWeatherPage(
             Triple("紫外线", ForecastChartGradient.uv, false),
             Triple("空气质量", ForecastChartGradient.air, true)
         ).let {if(day == null) it else it.toMutableList().apply {add(4,Triple("湿度",ForecastChartGradient.forTrack("湿度"),false))}}.forEach { (label, colors, isBar) ->
-            addView(LinearLayout(this@ForecastWeatherPage).apply {
+            items.addView(LinearLayout(this@ForecastWeatherPage).apply {
                 gravity = Gravity.CENTER
                 addView(View(this@ForecastWeatherPage).apply {
                     tag = "chart_legend_swatch"
@@ -485,9 +489,8 @@ internal class ForecastWeatherPage(
                     text = label
                     textSize = if(day == null) 8.5f else 8f
                     setTextColor(palette.secondary)
-                    maxLines = 1
                     includeFontPadding = false
-                }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(2) })
+                }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(2) })
             }, LinearLayout.LayoutParams(0, -2, 1f))
         }
         returnCurrentButton = FrostedActionButton(this@ForecastWeatherPage).apply {
@@ -498,7 +501,11 @@ internal class ForecastWeatherPage(
             setTextColor(palette.primary)
             setOnClickListener { onReturnToCurrent?.invoke() ?: resetToCurrent() }
         }
-        addView(returnCurrentButton, LinearLayout.LayoutParams(dp(58), dp(26)).apply { marginStart = dp(4) })
+        returnCurrentButton.minHeight = dp(28)
+        returnCurrentButton.setPadding(dp(6), dp(4), dp(6), dp(4))
+        addView(returnCurrentButton, LinearLayout.LayoutParams(-2, -2).apply {
+            if (stacked) { gravity = Gravity.END; topMargin = dp(5) } else marginStart = dp(4)
+        })
         updateReturnCurrentButton()
     }
 
@@ -629,8 +636,9 @@ private class HourlyForecastCompositeChartView(
     }
 
     /** 360dp 常见窄屏内，12 个小时列（11 个间隔）与两侧内边距可完整同屏。 */
-    val hourStepPx: Float get() = dp(HourlyForecastDetailPolicy.HOUR_STEP_DP)
-    private val edgeInsetPx: Float get() = dp(HourlyForecastDetailPolicy.EDGE_INSET_DP)
+    private val chartFontScale get() = maxOf(1f, sp(11f) / dp(11f))
+    val hourStepPx: Float get() = dp(HourlyForecastDetailPolicy.HOUR_STEP_DP) * chartFontScale
+    private val edgeInsetPx: Float get() = dp(HourlyForecastDetailPolicy.EDGE_INSET_DP) * chartFontScale
     private val initialSelectionIndex: Int
         get() = points.indexOfFirst { !it.isHistorical }.takeIf { it >= 0 } ?: 0
     private val initialSelectionX: Float get() = xAt(initialSelectionIndex)
@@ -706,8 +714,9 @@ private class HourlyForecastCompositeChartView(
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        // 父容器以权重分配一屏中剩余高度；未受约束（例如离屏测试）时才回落到正常高度。
-        setMeasuredDimension(maxOf(totalWidth,MeasureSpec.getSize(widthMeasureSpec)), resolveSize(dp(330f).roundToInt(), heightMeasureSpec))
+        val extraLabelHeight = (sp(15f) - dp(15f)).coerceAtLeast(0f)
+        val desired = (dp(330f) + 6f * extraLabelHeight).roundToInt()
+        setMeasuredDimension(maxOf(totalWidth, MeasureSpec.getSize(widthMeasureSpec)), resolveSize(desired, heightMeasureSpec))
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -715,7 +724,7 @@ private class HourlyForecastCompositeChartView(
         if (points.isEmpty()) return
         // 顶部时刻、五条轨道和图例共用同一横向内容坐标；两端 12dp 正好容纳 24dp
         // 的选中条形，因此首末数据列的外边界与上方摘要卡的两端对齐。
-        val headerHeight = minOf(dp(if(dailyMode) 48f else 36f), height * if(dailyMode) .17f else .15f)
+        val headerHeight = minOf((dp(if(dailyMode) 48f else 36f) + (sp(28f) - dp(28f)).coerceAtLeast(0f)), height * if(dailyMode) .17f else .15f)
         val laneGap = minOf(dp(8f), maxOf(dp(4f), height * .025f))
         val laneCount=if(dailyMode) 6 else 5
         val airLane=laneCount-1
@@ -725,7 +734,12 @@ private class HourlyForecastCompositeChartView(
         val right = width.toFloat()
         fun laneTop(index: Int) = headerHeight + index * (laneHeight + laneGap)
         fun laneBottom(index: Int) = laneTop(index) + laneHeight
-        fun graphTop(index: Int) = laneTop(index) + minOf(dp(if(dailyMode && index==0) 28f else 23f), laneHeight * if(dailyMode && index==0) .64f else .42f)
+        textPaint.textSize = sp(8.5f * HourlyForecastDetailPolicy.metricLabelScale(1f))
+        textPaint.typeface = Typeface.DEFAULT_BOLD
+        val labelOffset = maxOf(dp(12f), -textPaint.ascent() + dp(2f))
+        val labelSpace = labelOffset + textPaint.descent() + dp(4f)
+        fun graphTop(index: Int) = laneTop(index) + maxOf(labelSpace,
+            minOf(sp(if (dailyMode && index == 0) 28f else 23f), laneHeight * if (dailyMode && index == 0) .64f else .42f))
         fun graphBottom(index: Int) = laneBottom(index) - minOf(dp(5f), laneHeight * .12f)
 
         repeat(laneCount) { lane ->
@@ -807,7 +821,7 @@ private class HourlyForecastCompositeChartView(
         for(index in firstVisible..lastVisible) {
             val point = points[index]
             val emphasis = selectionEmphasisForIndex(index)
-            drawTimeLabel(canvas, index, minOf(dp(22f), headerHeight * .7f), emphasis)
+            drawTimeLabel(canvas, index, minOf(maxOf(dp(22f), sp(11.4f) * 1.05f), headerHeight * .7f), emphasis)
             if(dailyMode && headerHeight >= dp(44f)) {
                 val size=dp(13f*(1f+emphasis*.22f))
                 WeatherIconCache.load(context,point.skycon,size)?.let {bitmap ->
@@ -815,7 +829,6 @@ private class HourlyForecastCompositeChartView(
                 }
             }
             // 数字基线抬高、曲线起点下移，给放大后的焦点读数留出稳定的上下间距。
-            val labelOffset = minOf(dp(12f), laneHeight * .24f)
             val temperatureColor = tempPositions[index]?.let {
                 ForecastChartGradient.colorAt(ForecastChartGradient.temperature, it.y, graphTop(0), graphBottom(0))
             } ?: palette.secondary
@@ -831,18 +844,19 @@ private class HourlyForecastCompositeChartView(
             drawMetricLabel(canvas, HourlyForecastDetailPolicy.percent(point.precipitationProbability)?.let { "$it%" } ?: "—",
                 xAt(index), laneTop(1) + labelOffset, palette.rain, emphasis, index)
             val windColor=windPositions[index]?.let { ForecastChartGradient.colorAt(ForecastChartGradient.wind, it.y, graphTop(2), graphBottom(2)) } ?: palette.wind
-            drawMetricLabel(canvas,windLabels[index],xAt(index),laneTop(2)+labelOffset,windColor,emphasis,index)
-            if(dailyMode) ForecastWindDirection.navigationArrowRotation(point.windDirectionDegrees)?.let {rotation ->
-                val half=textPaint.measureText(windLabels[index])/2f
-                val center=xAt(index).coerceIn(half+dp(2f),(width-half-dp(2f)).coerceAtLeast(half+dp(2f)))
-                val arrowX=center+half+dp(4f)
-                if(arrowX-dp(3f)>=viewportScrollX && arrowX+dp(3f)<=viewportScrollX+viewportWidth) {
-                    val saved=canvas.save()
-                    canvas.translate(arrowX,laneTop(2)+labelOffset-dp(3f));canvas.rotate(rotation)
-                    val scale=dp(3f+emphasis);canvas.scale(scale,scale)
-                    fillPaint.shader=null;fillPaint.color=textPaint.color
-                    canvas.drawPath(windArrow,fillPaint);canvas.restoreToCount(saved)
-                }
+            val windRotation = if (dailyMode) ForecastWindDirection.navigationArrowRotation(point.windDirectionDegrees) else null
+            val windRight = drawMetricLabel(canvas, windLabels[index], xAt(index), laneTop(2) + labelOffset,
+                windColor, emphasis, index, trailingSpace = if (windRotation != null) dp(12f) else 0f)
+            if (windRotation != null && windRight != null) {
+                val saved = canvas.save()
+                canvas.translate(windRight + dp(6f), laneTop(2) + labelOffset - dp(3f))
+                canvas.rotate(windRotation)
+                val scale = dp(3f + emphasis)
+                canvas.scale(scale, scale)
+                fillPaint.shader = null
+                fillPaint.color = textPaint.color
+                canvas.drawPath(windArrow, fillPaint)
+                canvas.restoreToCount(saved)
             }
             drawMetricLabel(canvas, point.uv?.roundToInt()?.let { "${it}级" } ?: "—", xAt(index), laneTop(3) + labelOffset,
                 uvPositions[index]?.let { ForecastChartGradient.colorAt(ForecastChartGradient.uv, it.y, graphTop(3), graphBottom(3)) }
@@ -933,8 +947,9 @@ private class HourlyForecastCompositeChartView(
         @ColorInt accent: Int,
         emphasis: Float,
         index: Int,
-        alwaysAccent: Boolean = false
-    ) {
+        alwaysAccent: Boolean = false,
+        trailingSpace: Float = 0f
+    ): Float? {
         val focus = emphasis.coerceIn(0f, 1f)
         textPaint.style = Paint.Style.FILL
         textPaint.pathEffect = null
@@ -955,14 +970,22 @@ private class HourlyForecastCompositeChartView(
             colorForIndex(readableAccent, index),
             if (alwaysAccent) 1f else focus
         )
-        val halfWidth = textPaint.measureText(value) / 2f
-        val minX = halfWidth + dp(2f)
-        val maxX = width - halfWidth - dp(2f)
-        val safeX = if (minX <= maxX) x.coerceIn(minX, maxX) else width / 2f
+        // Keep the focused reading within its own hour even when it is bold or has a percent sign.
+        val gap = dp(1.5f)
+        val cellLeft = if (index == 0) gap else x - hourStepPx / 2f + gap
+        val cellRight = if (index == points.lastIndex) width - gap else x + hourStepPx / 2f - gap
+        val available = (cellRight - cellLeft - trailingSpace).coerceAtLeast(1f)
+        val measured = textPaint.measureText(value)
+        if (measured > available) textPaint.textSize *= available / measured
+        val halfWidth = minOf(available, textPaint.measureText(value)) / 2f
+        val safeX = (x - trailingSpace / 2f).coerceIn(cellLeft + halfWidth,
+            (cellRight - trailingSpace - halfWidth).coerceAtLeast(cellLeft + halfWidth))
+        val right = safeX + halfWidth
         val visibleLeft = viewportScrollX.toFloat()
         val visibleRight = visibleLeft + viewportWidth
-        if (viewportWidth > 0 && (safeX - halfWidth < visibleLeft || safeX + halfWidth > visibleRight)) return
+        if (viewportWidth > 0 && (safeX - halfWidth < visibleLeft || right + trailingSpace > visibleRight)) return null
         canvas.drawText(value, safeX, baseline, textPaint)
+        return right
     }
 
     /**
@@ -1078,5 +1101,5 @@ private class HourlyForecastCompositeChartView(
     private fun colorForIndex(@ColorInt color: Int, index: Int): Int =
         if (points.getOrNull(index)?.isHistorical == true) historicalColor(color) else color
     private fun dp(value: Float): Float = value * resources.displayMetrics.density
-    private fun sp(value: Float): Float = value * resources.displayMetrics.scaledDensity
+    private fun sp(value: Float): Float = resources.weatherSp(value)
 }

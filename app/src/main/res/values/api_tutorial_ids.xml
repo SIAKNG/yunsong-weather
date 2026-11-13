@@ -13,4 +13,8 @@
     <item name="apiCaiyunToken" type="id" />
     <item name="apiAmapKey" type="id" />
     <item name="apiCapabilityTable" type="id" />
+    <item name="apiConfigCaiyunTab" type="id" />
+    <item name="apiConfigQweatherTab" type="id" />
+    <item name="freeWeatherNoticeWhy" type="id" />
+    <item name="freeWeatherNoticeOptOut" type="id" />
 </resources>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    style="@style/SettingsSwitchRow"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <TextView
+        style="@style/SettingsChoiceTitle"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:labelFor="@id/freeWeatherNoticeOptOut"
+        android:text="不再显示免费天气源提醒" />
+
+    <android.widget.Switch
+        android:id="@id/freeWeatherNoticeOptOut"
+        style="@style/WeatherSystemSwitch"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+
+</LinearLayout>

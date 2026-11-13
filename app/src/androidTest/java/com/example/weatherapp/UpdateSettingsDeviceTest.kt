@@ -128,7 +128,11 @@ class UpdateSettingsDeviceTest {
                                     assertTrue("A user tap bypasses the automatic cache",force)
                                     calls.incrementAndGet();started.countDown()
                                     release.await(4,java.util.concurrent.TimeUnit.SECONDS)
-                                    AppUpdatePolicy.Result(status,if(status==AppUpdatePolicy.Status.NEW_VERSION) "9.9" else "")
+                                    AppUpdatePolicy.Result(status,if(status==AppUpdatePolicy.Status.NEW_VERSION) "9.9" else "",
+                                        if (status == AppUpdatePolicy.Status.NEW_VERSION) AppUpdatePolicy.Apk(
+                                            "https://github.com/SIAKNG/yunsong-weather/releases/download/v9.9/yunsong-weather-9.9.apk",
+                                            10_000_000, null, 999
+                                        ) else null)
                                 }
                                 activity.javaClass.getDeclaredField("updateRequest").apply {isAccessible=true}.set(activity,request)
                                 activity.findViewById<View>(R.id.btnCheckUpdate).performClick()
@@ -148,8 +152,16 @@ class UpdateSettingsDeviceTest {
                                 assertEquals(if(status==AppUpdatePolicy.Status.NEW_VERSION) View.VISIBLE else View.GONE,
                                     activity.findViewById<View>(R.id.updateDownloadArrow).visibility)
                             }
-                            assertEquals(if(status==AppUpdatePolicy.Status.NEW_VERSION) 1 else 0,opened.size)
-                            if(opened.isNotEmpty()) assertEquals(AppUpdatePolicy.DOWNLOAD_PAGE,opened.single().dataString)
+                            assertTrue("Checking for updates never launches a browser", opened.isEmpty())
+                            scenario.onActivity { activity ->
+                                val prompt = activity.javaClass.getDeclaredField("updateConfirmDialog")
+                                    .apply { isAccessible = true }.get(activity) as? android.app.AlertDialog
+                                assertEquals(status == AppUpdatePolicy.Status.NEW_VERSION, prompt?.isShowing == true)
+                                if (prompt?.isShowing == true) {
+                                    assertEquals("下载更新", prompt.getButton(android.app.AlertDialog.BUTTON_POSITIVE).text.toString())
+                                    prompt.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).performClick()
+                                }
+                            }
                         } finally {release.countDown()}
                     }
                 }

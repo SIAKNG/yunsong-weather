@@ -31,7 +31,8 @@ data class WeatherRainEvent(
     val category: String,
     val categoryRank: Int,
     val summary: String,
-    val peak: String
+    val peak: String,
+    val forecast: RainForecast? = null
 ) {
     val notificationId: Int get() = 2001 + cityKey.stablePositiveHash()
     val notificationTitle: String get() = WeatherRainPresentation.notificationTitle(locationName, firstRainAt)
@@ -48,7 +49,7 @@ data class AlertReconcileResult(
     val activeCount: Int
 )
 
-enum class RainDelivery { NEW, QUIET_UPDATE, ESCALATED }
+enum class RainDelivery { NEW, QUIET_UPDATE, UPDATED, ESCALATED, ENDING }
 
 data class RainReconcileResult(
     val delivery: RainDelivery?,
@@ -57,7 +58,7 @@ data class RainReconcileResult(
 
 /**
  * 预警/降雨的本机事件台账。它记录“事件状态”，而非简单的时间节流：
- * 同一事件不会因为打开 App 或六小时后再次出现而重发；等级升高才会再次响铃。
+ * 同一预警不会因打开 App 而重发；降雨按实际预报变化、半小时步进和结束/增强规则投递。
  */
 object WeatherNotificationLedger {
     private const val PREFS = "weather_notification_ledger_v2"
@@ -155,37 +156,44 @@ object WeatherNotificationLedger {
     }
 
     @Synchronized
-    fun reconcileRain(context: Context, event: WeatherRainEvent, deliver: (RainDelivery) -> Boolean = { true }): RainReconcileResult {
+    fun reconcileRain(context: Context, event: WeatherRainEvent,
+                      now: Long = System.currentTimeMillis(),
+                      deliver: (RainDelivery) -> Boolean = { true }): RainReconcileResult {
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val storageKey = RAIN_PREFIX + event.cityKey
         val existing = parseRainEntry(prefs.getString(storageKey, null))
-        // 提醒地点变更后，原地点的“两小时降雨”已经不再适用，主动撤销旧通知。
-        val staleEntries = prefs.all.keys
-            .filter { it.startsWith(RAIN_PREFIX) && it != storageKey }
-            .mapNotNull { key -> parseRainEntry(prefs.getString(key, null)) }
-        val earlier = existing != null && event.firstRainAt + 15L * 60_000L < existing.firstRainAt
-        val delivery = when {
+        val staleKeys = prefs.all.keys.filter { it.startsWith(RAIN_PREFIX) && it != storageKey }
+        val staleIds = staleKeys.mapNotNull { parseRainEntry(prefs.getString(it, null))?.notificationId }
+        val forecast = event.forecast
+        val decision = if (forecast != null) {
+            // Seed old active events without replaying their notifications on upgrade.
+            val baseline = existing?.state ?: existing?.let {
+                RainReminderState(forecast, now, active = true, endingNotified = false, urgentRank = it.categoryRank)
+            }
+            RainReminderPolicy.decide(forecast, baseline, now)
+        } else null
+        val delivery = if (decision != null) decision.delivery else when {
             existing == null -> RainDelivery.NEW
-            event.categoryRank > existing.categoryRank -> RainDelivery.ESCALATED
-            earlier -> RainDelivery.ESCALATED
-            event.locationName != existing.locationName ||
-                event.summary != existing.summary || event.peak != existing.peak -> RainDelivery.QUIET_UPDATE
+            event.categoryRank >= 2 && event.categoryRank > existing.categoryRank -> RainDelivery.ESCALATED
             else -> null
         }
+        // A failed delivery must not consume the event or its half-hour interval.
         if (delivery != null && !deliver(delivery)) return RainReconcileResult(null)
         prefs.edit().apply {
-            prefs.all.keys.filter { it.startsWith(RAIN_PREFIX) && it != storageKey }.forEach(::remove)
-            putString(storageKey, RainEntry(
-            notificationId = event.notificationId,
-            locationName = event.locationName,
-            firstRainAt = event.firstRainAt,
-            categoryRank = event.categoryRank,
-            summary = event.summary,
-            peak = event.peak
+            staleKeys.forEach(::remove)
+            if (decision != null && decision.state == null) remove(storageKey)
+            else putString(storageKey, RainEntry(
+                notificationId = event.notificationId, locationName = event.locationName,
+                firstRainAt = event.firstRainAt, categoryRank = event.categoryRank,
+                summary = event.summary, peak = event.peak,
+                state = decision?.state ?: existing?.state
             ).encode())
-            apply()
+            commit()
         }
-        return RainReconcileResult(delivery, staleEntries.map { it.notificationId }.distinct())
+        val cancelledForecast = delivery == null && decision?.state?.active == false &&
+            decision.state.endingNotified == false
+        return RainReconcileResult(delivery,
+            (staleIds + if (cancelledForecast) listOf(event.notificationId) else emptyList()).distinct())
     }
 
     fun clearRain(context: Context): List<Int> {
@@ -251,29 +259,50 @@ object WeatherNotificationLedger {
         val firstRainAt: Long,
         val categoryRank: Int,
         val summary: String,
-        val peak: String
+        val peak: String,
+        val state: RainReminderState? = null
     ) {
         fun encode(): String = JSONObject().apply {
-            put("id", notificationId)
-            put("n", locationName)
-            put("t", firstRainAt)
-            put("r", categoryRank)
-            put("s", summary)
-            put("p", peak)
+            put("id", notificationId); put("n", locationName); put("t", firstRainAt)
+            put("r", categoryRank); put("s", summary); put("p", peak)
+            state?.let { state ->
+                put("rainState", JSONObject().apply {
+                    put("times", org.json.JSONArray(state.delivered.times))
+                    put("rates", org.json.JSONArray(state.delivered.rates))
+                    put("interval", state.delivered.intervalMillis)
+                    put("sentAt", state.lastDeliveredAt); put("active", state.active)
+                    put("ended", state.endingNotified); put("urgentRank", state.urgentRank)
+                    put("observedAt", state.observedAt)
+                    put("observedTimes", org.json.JSONArray(state.observed.times))
+                    put("observedRates", org.json.JSONArray(state.observed.rates))
+                    put("observedInterval", state.observed.intervalMillis)
+                    put("rainingObserved", state.rainingObserved)
+                })
+            }
         }.toString()
     }
 
     private fun parseRainEntry(raw: String?): RainEntry? = runCatching {
         val value = JSONObject(raw.orEmpty())
-        RainEntry(
-            notificationId = value.getInt("id"),
-            locationName = value.optString("n", ""),
-            firstRainAt = value.getLong("t"),
-            categoryRank = value.getInt("r"),
-            summary = value.getString("s"),
-            peak = value.getString("p")
-        )
+        val state = value.optJSONObject("rainState")?.let { state ->
+            val times = state.getJSONArray("times")
+            val rates = state.getJSONArray("rates")
+            val observedTimes = state.optJSONArray("observedTimes") ?: times
+            val observedRates = state.optJSONArray("observedRates") ?: rates
+            RainReminderState(
+                RainForecast((0 until times.length()).map { times.getLong(it) },
+                    (0 until rates.length()).map { rates.getDouble(it) }, state.getLong("interval")),
+                state.getLong("sentAt"), state.getBoolean("active"), state.getBoolean("ended"),
+                state.optInt("urgentRank", -1), state.optLong("observedAt", state.getLong("sentAt")),
+                RainForecast((0 until observedTimes.length()).map { observedTimes.getLong(it) },
+                    (0 until observedRates.length()).map { observedRates.getDouble(it) },
+                    state.optLong("observedInterval", state.getLong("interval"))),
+                state.optBoolean("rainingObserved", true))
+        }
+        RainEntry(value.getInt("id"), value.optString("n", ""), value.getLong("t"),
+            value.getInt("r"), value.getString("s"), value.getString("p"), state)
     }.getOrNull()
+
 }
 
 internal fun String.stablePositiveHash(): Int = when (val hash = hashCode()) {

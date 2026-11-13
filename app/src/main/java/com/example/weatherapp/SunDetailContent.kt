@@ -24,7 +24,7 @@ internal class SunDetailContent(
 
 
     fun bind(dark: Boolean) {
-        WeatherAddressFormatter.bind(findViewById(R.id.tvSunDetailCity), intent.getStringExtra(EXTRA_CITY).orEmpty())
+        WeatherAddressFormatter.bindDetail(findViewById(R.id.tvSunDetailCity), intent.getStringExtra(EXTRA_CITY).orEmpty())
         val rawData = SunAstronomyData(
             intent.getLongExtra(EXTRA_SUNRISE, 0L), intent.getLongExtra(EXTRA_SUNSET, 0L),
             intent.getLongExtra(EXTRA_YESTERDAY_SUNSET, 0L), intent.getLongExtra(EXTRA_NEXT_SUNRISE, 0L),

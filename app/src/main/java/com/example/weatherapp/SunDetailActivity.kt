@@ -8,7 +8,6 @@ import android.view.View
 import android.widget.TextView
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.android.material.color.DynamicColors
@@ -16,7 +15,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 /** 日出日落的全天详情：天气源日出日落 + 本地太阳位置算法补全晨昏数据。 */
-open class SunDetailActivity : AppCompatActivity(), DetailPageMotionHost {
+open class SunDetailActivity : WeatherActivity(), DetailPageMotionHost {
     override fun onPostCreate(savedInstanceState: Bundle?) {
         super.onPostCreate(savedInstanceState)
         DetailCardEdges.apply(findViewById(android.R.id.content))

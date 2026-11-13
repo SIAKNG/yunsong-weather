@@ -31,7 +31,7 @@
             android:layout_width="1dp"
             android:layout_height="0dp" />
 
-        <TextView
+        <com.example.weatherapp.HomeWeatherTextView
             android:id="@+id/tvTemp"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -43,7 +43,7 @@
             android:textColor="#FFFFFF"
             android:textSize="100sp" />
 
-        <TextView
+        <com.example.weatherapp.HomeWeatherTextView
             android:id="@+id/tvDesc"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -51,7 +51,7 @@
             android:textColor="#FFFFFF"
             android:textSize="24sp" />
 
-        <TextView
+        <com.example.weatherapp.HomeWeatherTextView
             android:id="@+id/tvHighLow"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -79,7 +79,7 @@
                 android:contentDescription="天气预警"
                 android:src="@drawable/ic_tianqi_yujing" />
 
-            <TextView
+            <com.example.weatherapp.HomeWeatherTextView
                 android:id="@+id/tvAlertEntry"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -100,7 +100,7 @@
             android:padding="16dp"
             android:visibility="gone">
 
-            <TextView
+            <com.example.weatherapp.HomeWeatherTextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="降雨趋势"
@@ -108,7 +108,7 @@
                 android:textSize="15sp"
                 android:textStyle="bold" />
 
-            <TextView
+            <com.example.weatherapp.HomeWeatherTextView
                 android:id="@+id/tvMinutelySummary"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -129,13 +129,11 @@
                 android:layout_marginTop="6dp"
                 android:orientation="horizontal">
 
-                <TextView
+                <com.example.weatherapp.HomeWeatherTextView
                     android:id="@+id/tvMinutelyPeak"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:gravity="start"
-                    android:ellipsize="end"
-                    android:maxLines="1"
                     android:text="雨量峰值 --"
                     android:textColor="#99FFFFFF"
                     android:textSize="12sp" />
@@ -152,7 +150,7 @@
             android:paddingTop="16dp"
             android:paddingBottom="16dp">
 
-            <TextView
+            <com.example.weatherapp.HomeWeatherTextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:paddingStart="16dp"
@@ -193,7 +191,7 @@
                 android:paddingStart="16dp"
                 android:paddingEnd="16dp">
 
-                <TextView
+                <com.example.weatherapp.HomeWeatherTextView
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
@@ -224,7 +222,7 @@
                         android:layout_gravity="center_vertical"
                         android:orientation="horizontal">
 
-                        <TextView
+                        <com.example.weatherapp.HomeWeatherTextView
                             android:id="@+id/tvModeChart"
                             android:layout_width="47dp"
                             android:layout_height="wrap_content"
@@ -235,7 +233,7 @@
                             android:textColor="#B3FFFFFF"
                             android:textSize="10sp" />
 
-                        <TextView
+                        <com.example.weatherapp.HomeWeatherTextView
                             android:id="@+id/tvModeList"
                             android:layout_width="47dp"
                             android:layout_height="wrap_content"
@@ -275,7 +273,7 @@
                 android:paddingEnd="16dp" />
 
             <!-- 查看更多 / 收起（仅列表模式显示，折线模式隐藏） -->
-            <TextView
+            <com.example.weatherapp.HomeWeatherTextView
                 android:id="@+id/tvDailyMore"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -318,7 +316,7 @@
                     android:contentDescription="日出图标"
                     android:scaleType="centerInside" />
 
-                <TextView
+                <com.example.weatherapp.HomeWeatherTextView
                     android:id="@+id/tvSunCountdownLabel"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -344,7 +342,7 @@
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
-                <TextView
+                <com.example.weatherapp.HomeWeatherTextView
                     android:id="@+id/tvSunLeftLabel"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -355,7 +353,7 @@
                     android:textColor="#B3FFFFFF"
                     android:textSize="13sp" />
 
-                <TextView
+                <com.example.weatherapp.HomeWeatherTextView
                     android:id="@+id/tvSunCountdownTime"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -366,7 +364,7 @@
                     android:textColor="#66FFFFFF"
                     android:textSize="14sp" />
 
-                <TextView
+                <com.example.weatherapp.HomeWeatherTextView
                     android:id="@+id/tvSunRightLabel"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -392,7 +390,7 @@
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
-                <TextView
+                <com.example.weatherapp.HomeWeatherTextView
                     android:id="@+id/tvSunrise"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -403,7 +401,7 @@
                     android:textSize="20sp"
                     android:textStyle="bold" />
 
-                <TextView
+                <com.example.weatherapp.HomeWeatherTextView
                     android:id="@+id/tvSunDuration"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -415,7 +413,7 @@
                     android:textColor="#B3FFFFFF"
                     android:textSize="12sp" />
 
-                <TextView
+                <com.example.weatherapp.HomeWeatherTextView
                     android:id="@+id/tvSunset"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
@@ -439,7 +437,7 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <TextView
+            <com.example.weatherapp.HomeWeatherTextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="空气质量"
@@ -454,7 +452,7 @@
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
-                <TextView
+                <com.example.weatherapp.HomeWeatherTextView
                     android:id="@+id/tvAqiLevel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -463,7 +461,7 @@
                     android:textSize="24sp"
                     android:textStyle="bold" />
 
-                <TextView
+                <com.example.weatherapp.HomeWeatherTextView
                     android:id="@+id/tvAqiValue"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -474,7 +472,7 @@
                     android:textStyle="bold" />
             </LinearLayout>
 
-            <TextView
+            <com.example.weatherapp.HomeWeatherTextView
                 android:id="@+id/tvAqiDesc"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -505,13 +503,13 @@
                 <com.example.weatherapp.SquareBlurCardView
                     android:id="@+id/cardVisibility"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="match_parent"
                     android:layout_marginEnd="6dp"
                     android:layout_weight="1"
                     android:orientation="vertical"
                     android:padding="16dp">
 
-                    <TextView
+                    <com.example.weatherapp.HomeWeatherTextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="能见度"
@@ -519,7 +517,7 @@
                         android:textSize="15sp"
                         android:textStyle="bold" />
 
-                    <TextView
+                    <com.example.weatherapp.HomeWeatherTextView
                         android:id="@+id/tvVisibilityValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
@@ -534,7 +532,7 @@
                         android:layout_height="0dp"
                         android:layout_weight="1" />
 
-                    <TextView
+                    <com.example.weatherapp.HomeWeatherTextView
                         android:id="@+id/tvVisibilityDesc"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
@@ -547,13 +545,13 @@
                 <com.example.weatherapp.SquareBlurCardView
                     android:id="@+id/cardHumidity"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="match_parent"
                     android:layout_marginStart="6dp"
                     android:layout_weight="1"
                     android:orientation="vertical"
                     android:padding="16dp">
 
-                    <TextView
+                    <com.example.weatherapp.HomeWeatherTextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="湿度"
@@ -561,7 +559,7 @@
                         android:textSize="15sp"
                         android:textStyle="bold" />
 
-                    <TextView
+                    <com.example.weatherapp.HomeWeatherTextView
                         android:id="@+id/tvHumidityValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
@@ -576,7 +574,7 @@
                         android:layout_height="0dp"
                         android:layout_weight="1" />
 
-                    <TextView
+                    <com.example.weatherapp.HomeWeatherTextView
                         android:id="@+id/tvHumidityDesc"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
@@ -585,7 +583,7 @@
                         android:textColor="#99FFFFFF"
                         android:textSize="12sp" />
 
-                    <TextView
+                    <com.example.weatherapp.HomeWeatherTextView
                         android:id="@+id/tvHumidityDew"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
@@ -605,13 +603,13 @@
                 <com.example.weatherapp.SquareBlurCardView
                     android:id="@+id/cardPressure"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="match_parent"
                     android:layout_marginEnd="6dp"
                     android:layout_weight="1"
                     android:orientation="vertical"
                     android:padding="16dp">
 
-                    <TextView
+                    <com.example.weatherapp.HomeWeatherTextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="气压"
@@ -629,13 +627,13 @@
                 <com.example.weatherapp.SquareBlurCardView
                     android:id="@+id/cardWind"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="match_parent"
                     android:layout_marginStart="6dp"
                     android:layout_weight="1"
                     android:orientation="vertical"
                     android:padding="16dp">
 
-                    <TextView
+                    <com.example.weatherapp.HomeWeatherTextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="风力"
@@ -663,7 +661,7 @@
                             android:gravity="center"
                             android:orientation="vertical">
 
-                            <TextView
+                            <com.example.weatherapp.HomeWeatherTextView
                                 android:id="@+id/tvWindLevel"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
@@ -675,7 +673,7 @@
                         </com.example.weatherapp.BlurCardView>
                     </FrameLayout>
 
-                    <TextView
+                    <com.example.weatherapp.HomeWeatherTextView
                         android:id="@+id/tvWindDesc"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
@@ -695,7 +693,7 @@
                 <com.example.weatherapp.SquareBlurCardView
                     android:id="@+id/cardFeelsLike"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="match_parent"
                     android:layout_marginEnd="6dp"
                     android:layout_weight="1"
                     android:orientation="vertical"
@@ -703,7 +701,7 @@
                     android:clipChildren="false"
                     android:clipToPadding="false">
 
-                    <TextView
+                    <com.example.weatherapp.HomeWeatherTextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="体感温度"
@@ -711,7 +709,7 @@
                         android:textSize="15sp"
                         android:textStyle="bold" />
 
-                    <TextView
+                    <com.example.weatherapp.HomeWeatherTextView
                         android:id="@+id/tvFeelsValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
@@ -732,7 +730,7 @@
                         android:layout_height="0dp"
                         android:layout_weight="1" />
 
-                    <TextView
+                    <com.example.weatherapp.HomeWeatherTextView
                         android:id="@+id/tvFeelsDesc"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -740,22 +738,19 @@
                         android:text=""
                         android:textColor="#99FFFFFF"
                         android:textSize="12sp"
-                        android:singleLine="true"
-                        android:maxLines="1"
-                        android:ellipsize="end"
                         android:includeFontPadding="false" />
                 </com.example.weatherapp.SquareBlurCardView>
 
                 <com.example.weatherapp.SquareBlurCardView
                     android:id="@+id/cardUv"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="match_parent"
                     android:layout_marginStart="6dp"
                     android:layout_weight="1"
                     android:orientation="vertical"
                     android:padding="16dp">
 
-                    <TextView
+                    <com.example.weatherapp.HomeWeatherTextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="紫外线"
@@ -763,7 +758,7 @@
                         android:textSize="15sp"
                         android:textStyle="bold" />
 
-                    <TextView
+                    <com.example.weatherapp.HomeWeatherTextView
                         android:id="@+id/tvUvValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
@@ -784,7 +779,7 @@
                         android:layout_height="0dp"
                         android:layout_weight="1" />
 
-                    <TextView
+                    <com.example.weatherapp.HomeWeatherTextView
                         android:id="@+id/tvUvDesc"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -792,7 +787,6 @@
                         android:text=""
                         android:textColor="#99FFFFFF"
                         android:textSize="12sp"
-                        android:maxLines="2"
                         android:includeFontPadding="false" />
                 </com.example.weatherapp.SquareBlurCardView>
             </LinearLayout>
@@ -810,7 +804,7 @@
             android:paddingEnd="12dp"
             android:paddingBottom="8dp">
 
-            <TextView
+            <com.example.weatherapp.HomeWeatherTextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:paddingStart="4dp"
@@ -865,10 +859,10 @@
                     android:tint="#B3D8DEE9"
                     android:visibility="gone" />
 
-                <TextView
+                <com.example.weatherapp.HomeWeatherTextView
                     android:id="@+id/tvStatus"
                     android:layout_width="wrap_content"
-                    android:layout_height="16dp"
+                    android:layout_height="wrap_content"
                     android:layout_marginStart="10dp"
                     android:gravity="center_vertical"
                     android:includeFontPadding="false"
@@ -877,7 +871,7 @@
                     android:textSize="14.3sp" />
             </LinearLayout>
 
-            <TextView
+            <com.example.weatherapp.HomeWeatherTextView
                 android:id="@+id/tvStatusTime"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

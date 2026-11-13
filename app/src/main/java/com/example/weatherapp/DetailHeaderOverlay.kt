@@ -27,16 +27,17 @@ object DetailHeaderOverlay {
                 topMargin = top
             }
         )
-        root.post {
-            // 内容从固定标题栏下方开始滚动，留出少量自然间距。
-            scroll.setPadding(
-                scroll.paddingLeft,
-                header.height + top + dp(root, 4),
-                scroll.paddingRight,
-                scroll.paddingBottom
-            )
-            scroll.clipToPadding = false
+        fun updateContentInsets() {
+            val topInset = header.height + top + dp(root, 4)
+            for (index in 0 until root.childCount) {
+                val page = root.getChildAt(index) as? DetailScrollView ?: continue
+                page.setPadding(page.paddingLeft, topInset, page.paddingRight, page.paddingBottom)
+                page.clipToPadding = true
+            }
         }
+        scroll.clipToPadding = true
+        header.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateContentInsets() }
+        root.post(::updateContentInsets)
     }
 
     private fun dp(view: View, value: Int): Int =

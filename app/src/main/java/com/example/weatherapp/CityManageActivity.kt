@@ -30,7 +30,6 @@ import android.widget.Toast
 import androidx.activity.SystemBarStyle
 import androidx.activity.addCallback
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
@@ -46,7 +45,7 @@ import retrofit2.Response
 // 城市管理页：展示所有已保存城市（含实时天气），
 // 点击进入城市详情；右上角"编辑"进入多选批量删除；
 // 点击搜索框后下方城市卡片渐隐，显示搜索面板
-class CityManageActivity : AppCompatActivity() {
+class CityManageActivity : WeatherActivity() {
 
     private val previewReq = 2001
     private var pendingCity: CityInfo? = null

@@ -6,13 +6,12 @@ import android.view.View
 import android.widget.TextView
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.android.material.color.DynamicColors
 
 /** 设置页内的关于页面：把数据使用与支持方式明确呈现，不再挤在系统对话框里。 */
-class WeatherAboutActivity : AppCompatActivity() {
+class WeatherAboutActivity : WeatherActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         DynamicColors.applyToActivityIfAvailable(this)

@@ -19,4 +19,5 @@
     <color name="check_stroke">#A0FFFFFF</color>
     <color name="check_fill">#8AB4FF</color>
     <color name="metric_detail_panel">#2EFFFFFF</color>
+    <color name="weather_launch_blue">#142447</color>
 </resources>

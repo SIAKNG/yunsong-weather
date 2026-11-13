@@ -32,6 +32,13 @@ object WeatherAddressFormatter {
             !clean.contains(Regex("[省区县旗街路号弄村\\s，,/]"))
         return compact(if (standalone) clean.dropLast(1) else clean)
     }
+    fun bindDetail(view: TextView, raw: String) {
+        view.setSingleLine(false)
+        view.maxLines = Int.MAX_VALUE
+        view.ellipsize = null
+        view.text = raw.trim().ifBlank { "当前位置" }
+    }
+
     fun bind(view: TextView, raw: String) {
         view.setSingleLine(true)
         view.ellipsize = TextUtils.TruncateAt.END

@@ -7,7 +7,6 @@ import android.view.View
 import android.widget.TextView
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -15,7 +14,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 
 // 新城市天气预览：完整复用 WeatherFragment（隐藏地址指示条与设置入口），
 // 顶部为“取消 / 居中城市名 / 添加”胶囊栏，背景与主页一致
-class CityPreviewActivity : AppCompatActivity(), WeatherUiHost {
+class CityPreviewActivity : WeatherActivity(), WeatherUiHost {
 
     private val previewButtonTint = Color.argb(38, 255, 255, 255)
 

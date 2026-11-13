@@ -26,4 +26,5 @@
     <color name="check_stroke">#66000000</color>
     <color name="check_fill">#3D6FB4</color>
     <color name="metric_detail_panel">@color/light_card_surface</color>
+    <color name="weather_launch_blue">#1875D5</color>
 </resources>

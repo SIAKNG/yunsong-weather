@@ -19,14 +19,13 @@ import android.widget.ListView
 import android.widget.TextView
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
 // 城市搜索页：输入关键字经自有 Gateway 调用高德，可搜区县/乡镇；
 // 网关不可用时自动降级为内置城市表。
-class SearchActivity : AppCompatActivity() {
+class SearchActivity : WeatherActivity() {
 
     private val previewReq = 1001
 

@@ -106,10 +106,11 @@ object WeatherNotificationCenter {
         return result
     }
 
-    /** 同一地点、同一场降雨只保留一条通知；新增或增强才提醒。 */
+    /** 同一地点保留一条降雨通知；普通变化半小时步进，突发增强/雨停独立去重。 */
     fun reconcileRain(
         context: Context,
-        event: WeatherRainEvent?
+        event: WeatherRainEvent?,
+        now: Long = System.currentTimeMillis()
     ): RainReconcileResult {
         ensureChannels(context)
         if (!WeatherSettings.rainReminder(context) || !canNotifyChannel(context, CHANNEL_RAIN))
@@ -117,9 +118,18 @@ object WeatherNotificationCenter {
         val result = if (event == null) {
             RainReconcileResult(null, WeatherNotificationLedger.clearRain(context))
         } else {
-            WeatherNotificationLedger.reconcileRain(context, event) { delivery ->
-                notify(context, event.notificationId, CHANNEL_RAIN, event.notificationTitle, event.notificationText,
-                    onlyAlertOnce = delivery == RainDelivery.QUIET_UPDATE, alertAgain = delivery == RainDelivery.ESCALATED)
+            WeatherNotificationLedger.reconcileRain(context, event, now) { delivery ->
+                val ending = delivery == RainDelivery.ENDING
+                val endingAt = event.forecast?.endingAt(now)
+                val title = if (ending) "${event.locationName}，${if (endingAt == null) "降雨已结束" else "雨即将结束"}"
+                    else WeatherRainPresentation.notificationTitle(event.locationName, event.firstRainAt, now)
+                val text = if (ending) {
+                    if (endingAt == null) "降雨已结束，后续预报时段暂无降雨，可以正常出行了。"
+                    else "预计约${((endingAt - now + 59_999L) / 60_000L).coerceAtLeast(1)}分钟后降雨结束，后续预报时段暂无降雨，雨停后可以正常出行。"
+                } else event.notificationText
+                notify(context, event.notificationId, CHANNEL_RAIN, title, text,
+                    onlyAlertOnce = delivery == RainDelivery.QUIET_UPDATE,
+                    alertAgain = delivery != RainDelivery.QUIET_UPDATE)
             }
         }
         val notifications = NotificationManagerCompat.from(context)

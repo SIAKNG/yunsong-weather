@@ -4,6 +4,12 @@
 执行 `:app:assembleUserApiRelease` 后，在本机使用 Android SDK 的 `zipalign`、`apksigner` 完成对齐验证和签名。
 保持今后更新的应用包名及签名证书不变，并递增 `versionCode`。
 
+## 1.5 版本信息
+
+- 包名为 `com.example.weatherapp.userapi`，应用名为「云松天气」。
+- 版本标识为 `1.5-userapi`，Android 数字版本号为 `13`。
+- 沿用 1.4 的发布证书，详见下方指纹。
+
 ## 1.4 正式签名
 
 - 包名：`com.example.weatherapp.userapi`

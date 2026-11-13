@@ -84,7 +84,20 @@ internal object WeatherInfoWidgetRenderer {
             return measuredBounds
         }
         fun line(xx: Float,yy: Float,length: Float) {paint.shader=null;paint.color=0x25FFFFFF;paint.strokeWidth=.6f;canvas.drawLine(x(xx),y(yy),x(xx+length),y(yy),paint)}
-        fun icon(sky: String?,xx: Float,yy: Float,size: Float) {WeatherIconCache.load(context,sky,size*scale*fontScale)?.let {b->paint.shader=null;paint.alpha=255;val rect=RectF(x(xx),y(yy),x(xx)+size*fontScale,y(yy)+size*fontScale);audit?.add(Element("icon",sky.orEmpty(),RectF(rect)));canvas.drawBitmap(b,null,rect,paint)}}
+        fun icon(sky: String?,xx: Float,yy: Float,size: Float,bottomAlignedTo: Float?=null) {WeatherIconCache.load(context,sky,size*scale*fontScale)?.let {b->
+            paint.shader=null;paint.alpha=255
+            var left=0;var top=0;var right=b.width;var bottom=b.height
+            if(bottomAlignedTo!=null) {
+                val pixels=IntArray(b.width*b.height);b.getPixels(pixels,0,b.width,0,0,b.width,b.height)
+                left=b.width;top=b.height;right=0;bottom=0
+                for(py in 0 until b.height)for(px in 0 until b.width)if((pixels[py*b.width+px] ushr 24)>8){left=min(left,px);top=min(top,py);right=max(right,px+1);bottom=max(bottom,py+1)}
+                if(bottom==0){left=0;top=0;right=b.width;bottom=b.height}
+            }
+            val side=size*fontScale;val actualTop=bottomAlignedTo?.let{it-bottom.toFloat()/b.height*side} ?: y(yy)
+            val rect=RectF(x(xx),actualTop,x(xx)+side,actualTop+side)
+            audit?.add(Element("icon",sky.orEmpty(),if(bottomAlignedTo==null)RectF(rect)else RectF(rect.left+left.toFloat()/b.width*side,rect.top+top.toFloat()/b.height*side,rect.left+right.toFloat()/b.width*side,bottomAlignedTo)))
+            canvas.drawBitmap(b,null,rect,paint)
+        }}
         fun plate(sky: String?,xx: Float,yy: Float) {paint.shader=null;paint.color=0x1FFFFFFF;val r=18*fontScale;canvas.drawCircle(x(xx)+r,y(yy)+r,r,paint);icon(sky,xx+6*fontScale/sx,yy+6*fontScale/sy,24f)}
         fun header(title: String,small: Boolean=false) {
             text(title,14f,14f,if(small)14f else 15f,true,maxWidth=if(small)144f else 235f)
@@ -156,16 +169,16 @@ internal object WeatherInfoWidgetRenderer {
             val hours=data?.let{nextHours(it)}.orEmpty();val peak=hours.mapNotNull{HourlyForecastDetailPolicy.percent(it.rain)}.maxOrNull()
             if(kind=="rain") {
                 header(if(data?.sky?.contains("SNOW")==true) "未来降水" else "未来降雨",true)
-                text(peak?.toString() ?: "—",14f,54f,40f,true,maxWidth=82f);if(peak!=null) text("%",if(peak<10)44f else if(peak<100)66f else 88f,78f,16f,maxWidth=21f)
-                icon(displaySky(data),115f,52f,41f);text("未来6小时最高概率",14f,100f,11f,alpha=220)
+                val peakBounds=text(peak?.toString() ?: "—",14f,54f,40f,true,maxWidth=82f)
+                if(peak!=null) text("%",if(peak<10)44f else if(peak<100)66f else 88f,78f,16f,maxWidth=21f,bottomAlignedTo=peakBounds.bottom)
+                icon(displaySky(data),115f,52f,41f,bottomAlignedTo=peakBounds.bottom.takeIf{peak!=null});text("未来6小时最高概率",14f,100f,11f,alpha=220)
                 bars(hours,14f,117f,144f,24f,false)
             } else {
                 header("${city?.let{WeatherAddressFormatter.city(it.name)} ?: "云松天气"} · 降雨趋势")
                 val headline=when{peak==null->"概率待补充";peak<=10->"降水概率较低";else->"未来6小时"}
-                text(headline,14f,45f,27f,true,maxWidth=180f)
-                text("逐时降水概率",14f,82f,12f,alpha=220)
-                text(peak?.let{"最高 $it%"} ?: "暂无概率",282f,61f,17f,alpha=220,maxWidth=100f,align=Paint.Align.RIGHT)
-                icon(displaySky(data),302f,44f,40f);bars(hours,14f,102f,328f,35f,true)
+                val headlineBounds=text(headline,14f,45f,27f,true,maxWidth=180f)
+                text(peak?.let{"最高 $it%"} ?: "暂无概率",282f,61f,17f,alpha=220,maxWidth=100f,align=Paint.Align.RIGHT,bottomAlignedTo=headlineBounds.bottom)
+                icon(displaySky(data),302f,44f,40f,bottomAlignedTo=headlineBounds.bottom);bars(hours,14f,102f,328f,35f,true)
             }
             return bitmap
         }

@@ -7,4 +7,10 @@
         <item name="android:windowSplashScreenAnimationDuration">0</item>
         <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
     </style>
+    <style name="Theme.WeatherApp.Home" parent="Base.Theme.WeatherApp.Home">
+        <item name="android:windowSplashScreenBackground">@color/weather_launch_blue</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_transparent</item>
+        <item name="android:windowSplashScreenAnimationDuration">0</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+    </style>
 </resources>

@@ -10,7 +10,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:clipToPadding="false"
-        android:fillViewport="true"
+        android:fillViewport="false"
         android:overScrollMode="ifContentScrolls"
         android:scrollbars="none">
 
@@ -53,9 +53,7 @@
                         android:id="@+id/tvSunDetailCity"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:ellipsize="end"
                         android:gravity="center"
-                        android:maxLines="1"
                         android:textColor="@color/text_primary"
                         android:textSize="18sp"
                         android:textStyle="bold" />
@@ -109,8 +107,6 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:ellipsize="end"
-                android:maxLines="1"
                 android:textColor="@color/text_primary"
                 android:textSize="17sp"
                 android:textStyle="bold" />
@@ -120,8 +116,6 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="3dp"
-                android:ellipsize="end"
-                android:maxLines="1"
                 android:textColor="@color/text_secondary"
                 android:textSize="12sp" />
 
@@ -129,7 +123,6 @@
                 android:id="@+id/sunAltitudeChart"
                 android:layout_width="match_parent"
                 android:layout_height="192dp"
-                android:layout_weight="1"
                 android:layout_marginTop="4dp" />
 
             <LinearLayout

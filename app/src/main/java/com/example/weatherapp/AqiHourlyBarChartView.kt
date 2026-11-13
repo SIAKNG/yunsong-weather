@@ -45,7 +45,10 @@ class AqiHourlyBarChartView @JvmOverloads constructor(
         val left = 0f
         val right = width.toFloat()
         val top = dp(4f)
-        val bottom = height - dp(30f)
+        labelPaint.textSize = resources.weatherSp(9f)
+        val staggerCaptions = (labelPaint.measureText("00:00") + dp(4f)) * 6f > width
+        val captionSpacing = labelPaint.fontSpacing + dp(2f)
+        val bottom = height - maxOf(dp(30f), captionSpacing * (if (staggerCaptions) 2 else 1) + dp(10f))
         if (right <= left || bottom <= top) return
         val rawMax = points.mapNotNull { it.aqi }.maxOrNull() ?: 50.0
         val max = maxOf(150.0, ceil(rawMax / 50.0) * 50.0)
@@ -68,6 +71,7 @@ class AqiHourlyBarChartView @JvmOverloads constructor(
 
         val slot = (right - left) / points.size
         val bar = (slot * 0.70f).coerceAtLeast(dp(3f))
+        var tick = 0
         points.forEachIndexed { index, point ->
             val value = (point.aqi ?: 0.0).coerceIn(0.0, max)
             val x = left + slot * index + (slot - bar) / 2f
@@ -76,7 +80,6 @@ class AqiHourlyBarChartView @JvmOverloads constructor(
             canvas.drawRoundRect(RectF(x, y, x + bar, bottom), dp(3.5f), dp(3.5f), paint)
             if (index % 6 == 0 || index == points.lastIndex) {
                 labelPaint.color = if (darkTheme) Color.argb(185, 255, 255, 255) else Color.rgb(124, 130, 136)
-                labelPaint.textSize = resources.displayMetrics.scaledDensity * 9f
                 // 首尾标签贴合图形边界，避免时间字符串在窄屏上被裁切。
                 labelPaint.textAlign = when (index) {
                     0 -> Paint.Align.LEFT
@@ -90,9 +93,10 @@ class AqiHourlyBarChartView @JvmOverloads constructor(
                         points.lastIndex -> right
                         else -> x + bar / 2f
                     },
-                    height - dp(10f),
+                    height - dp(10f) - if (staggerCaptions && tick % 2 == 0) captionSpacing else 0f,
                     labelPaint
                 )
+                tick++
                 labelPaint.textAlign = Paint.Align.CENTER
             }
         }

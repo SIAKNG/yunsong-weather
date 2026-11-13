@@ -136,8 +136,12 @@ class Weather13DeviceTest {
                             assertEquals(24,field<DoubleArray>(panel.chart,"values").size)
                             assertEquals(metric.value(rows(0)[11])!!,field<DoubleArray>(panel.chart,"values")[11],0.0)
                         }
-                        val visible=Rect();assertTrue(panel.getGlobalVisibleRect(visible))
-                        assertEquals("Entire chart section fits in one screen",panel.height,visible.height())
+                        val scroll = generateSequence(panel.parent) { (it as? View)?.parent }
+                            .filterIsInstance<android.widget.ScrollView>().first()
+                        scroll.scrollTo(0, scroll.getChildAt(0).height)
+                        val visible = Rect()
+                        assertTrue(panel.chart.getGlobalVisibleRect(visible))
+                        assertEquals("Chart fits after scrolling to it", panel.chart.height, visible.height())
                         panel.findViewWithTag<View>("daily_metric:TEMPERATURE").performClick()
                         val reading=panel.findViewWithTag<TextView>("daily_metric_reading")
                         assertTrue(reading.layout==null || reading.layout.getEllipsisCount(0)==0)

@@ -117,7 +117,8 @@ internal class DailyForecastMetricPanel(
             addView(content,android.widget.FrameLayout.LayoutParams(-2,-1))
         }
         capsule.addView(capsuleScroll,android.widget.FrameLayout.LayoutParams(-1,-1))
-        addView(capsule,LayoutParams(-1,dp(36)).apply {bottomMargin=dp(10)})
+        val capsuleHeight = maxOf(dp(36), (resources.weatherSp(12f) * 1.45f).roundToInt() + dp(14))
+        addView(capsule, LayoutParams(-1, capsuleHeight).apply { bottomMargin = dp(10) })
         DailyForecastMetric.entries.forEach {metric ->
             val chip=TextView(context).apply {
                 tag="daily_metric:${metric.name}";text=metric.title;textSize=12f;gravity=Gravity.CENTER
@@ -164,10 +165,10 @@ internal class DailyForecastMetricPanel(
                 else -> "$timeText · ${selectedMetric.kind.level(value,second)}\n${selectedMetric.kind.advice(value,second)}"
             }
         }
-        panel.addView(chart,LayoutParams(-1,0,1f))
+        panel.addView(chart, LayoutParams(-1, maxOf(dp(244), dp(205) + resources.weatherSp(39f).roundToInt())))
         status.apply {tag="daily_history_status";textSize=11f;setTextColor(secondary);setPadding(dp(8),dp(6),dp(8),0)}
         panel.addView(status,LayoutParams(-1,-2))
-        addView(panel,LayoutParams(-1,0,1f))
+        addView(panel,LayoutParams(-1,-2))
         select(selectedMetric)
     }
 

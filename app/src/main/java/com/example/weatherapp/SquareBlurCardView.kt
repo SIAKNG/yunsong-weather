@@ -4,7 +4,7 @@ import android.content.Context
 import android.util.AttributeSet
 import android.view.View.MeasureSpec
 
-// 标准正方形圆角毛玻璃卡片：宽高保持 1:1，用于风力/湿度/气压/能见度四宫格
+/** Keep metric cards at least square, with room for multiline readings and notes. */
 class SquareBlurCardView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -13,11 +13,11 @@ class SquareBlurCardView @JvmOverloads constructor(
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
-        val w = measuredWidth
-        if (w > 0) {
-            // 用正方形高度重新测量子元素，weight 撑开的空间才能生效（说明文字贴底）
-            super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY))
-            setMeasuredDimension(w, w)
+        if (measuredWidth == 0 || MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.EXACTLY) return
+        val height = resolveSize(maxOf(measuredWidth, measuredHeight), heightMeasureSpec)
+        if (height != measuredHeight) {
+            // Re-measure the weighted spacer so the last note stays above the bottom padding.
+            super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY))
         }
     }
 }

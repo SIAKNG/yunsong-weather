@@ -28,18 +28,11 @@ internal class MetricDetailContent(
 
     fun bind(darkTheme: Boolean) {
         kind = MetricKind.fromIntent(intent.getStringExtra(EXTRA_KIND))
-        WeatherAddressFormatter.bind(findViewById(R.id.tvMetricDetailLocation), intent.getStringExtra(EXTRA_CITY).orEmpty())
+        WeatherAddressFormatter.bindDetail(findViewById(R.id.tvMetricDetailLocation), intent.getStringExtra(EXTRA_CITY).orEmpty())
         findViewById<TextView>(R.id.tvMetricDetailTitle).text = "${kind.title} · 未来24小时"
         value = findViewById(R.id.tvMetricDetailValue)
         advice = findViewById(R.id.tvMetricDetailAdvice)
         chart = findViewById(R.id.metricDetailChart)
-        // 风力页额外展示“风向 / 阵风”一行。仅回收图表的 24dp，
-        // 让该页与其他指标一样在默认字体下一屏完整呈现、无需纵向滚动。
-        if (kind == MetricKind.WIND) {
-            chart.layoutParams = chart.layoutParams.apply {
-                height = dp(220)
-            }
-        }
         chart.setDarkTheme(darkTheme)
         @Suppress("DEPRECATION")
         val lifeAdvice = intent.getSerializableExtra(EXTRA_LIFE_ADVICE) as? ArrayList<LifeAdviceItem>
