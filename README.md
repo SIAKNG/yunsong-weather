@@ -13,7 +13,7 @@
 点开卡片，可在详情页横向拖动图表，对照不同时刻的气象变化。
 
 仓库不包含维护者的天气密钥、个人服务账户或签名私钥。
-应用名为“云松天气”。当前版本为 **1.5**，Android 构建号为 **13**。维护者为 SIAKNG。
+应用名为“云松天气”。当前版本为 **1.6**，Android 构建号为 **14**。维护者为 SIAKNG。
 
 未填写个人 API 时默认使用 Open-Meteo 免费天气源；填写完整的彩云或和风接口后优先使用个人来源。
 实际数据范围见 [Open-Meteo 覆盖说明](docs/OPEN_METEO.md)。
@@ -24,6 +24,14 @@
 ## 版本更新
 
 版本记录按发布时间由新到旧排列；每次更新新增一条记录，保留已有版本的介绍与下载入口。
+
+### 1.6
+
+- **新增**了两款时钟天气小组件和完整的问题诊断与记录功能。
+- **优化**了刷新和回弹、预报详情、提醒文案、权限入口及存储占用。
+- **修复**了定位变化后历史图表可能断档、每日提醒高低温与首页不一致，以及部分刷新失败的问题。
+
+[下载 1.6 安装包](https://github.com/SIAKNG/yunsong-weather/releases/download/v1.6/yunsong-weather-1.6.apk) · [查看 1.6 发布说明](docs/releases/1.6.md)
 
 ### 1.5
 
@@ -237,7 +245,7 @@ API 填写页保留防截图保护，文档不展示真实 Token、API Key 或�
 
 ## 第一次使用
 
-1. 在 [Releases](https://github.com/SIAKNG/yunsong-weather/releases/latest) 下载 `yunsong-weather-1.5.apk` 并安装，后续安装包也在文件名中标明版本号。
+1. 在 [Releases](https://github.com/SIAKNG/yunsong-weather/releases/latest) 下载 `yunsong-weather-1.6.apk` 并安装，后续安装包也在文件名中标明版本号。
 2. 完成交互引导，认识地址、城市切换、卡片详情和刷新。
 3. 可直接使用免费天气。在「天气设置 → 天气数据」可关闭免费源提醒，也可打开截图教程申请个人接口。
 4. 按服务商选择对应标签。彩云填写自己的 v2 Token，和风填写自己的 API Host 和 API Key。

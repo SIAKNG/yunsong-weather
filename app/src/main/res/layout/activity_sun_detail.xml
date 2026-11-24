@@ -14,7 +14,7 @@
         android:overScrollMode="ifContentScrolls"
         android:scrollbars="none">
 
-        <LinearLayout
+        <com.example.weatherapp.DetailViewportColumn
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
@@ -313,6 +313,6 @@
                 </LinearLayout>
             </LinearLayout>
 
-        </LinearLayout>
+        </com.example.weatherapp.DetailViewportColumn>
     </com.example.weatherapp.DetailScrollView>
 </FrameLayout>

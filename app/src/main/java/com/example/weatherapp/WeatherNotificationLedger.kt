@@ -18,7 +18,8 @@ data class WeatherAlertEvent(
     val detail: String,
     val expiresAt: Long,
     /** 命中跨源事件时沿用已有通知 ID，保证静默覆盖同一条通知。 */
-    val notificationIdOverride: Int? = null
+    val notificationIdOverride: Int? = null,
+    val notificationArea: String? = null
 ) {
     val fingerprint: String get() = "$title|$level|$detail"
     val notificationId: Int get() = notificationIdOverride ?: 1000 + key.stablePositiveHash()
@@ -317,7 +318,8 @@ data class WeatherChangeEvent(
     val forecastAtMillis: Long,
     val severity: Int,
     val title: String,
-    val detail: String
+    val detail: String,
+    val deliveryFingerprint: String? = null
 ) {
     val key: String get() = "${WeatherNotificationLedger.cityKey(city)}|$type|${forecastAtMillis / 3_600_000L}"
     val notificationId: Int get() = 4_000 + key.stablePositiveHash()

@@ -23,6 +23,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
 import java.util.ArrayDeque
@@ -96,6 +97,11 @@ class MainActivity : WeatherActivity(), WeatherUiHost {
     private var initialPermissionFlowStarted = false
     private val foregroundLocation by lazy { ForegroundWeatherLocation(applicationContext) }
     private var automaticLocationInProgress = false
+    private var initialLocationPermissionChecked = false
+    private var lastLocationRecoverySession = -1L
+    private var lastLocationRecoveryReady = false
+    private var selectLocationAfterFix = false
+    private var pendingManualLocation = false
     private var initialPermissionFlowCompleted = false
     private val freeWeatherNotice by lazy { FreeWeatherNotice(this) }
     private val firstApiConfiguration = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -104,30 +110,17 @@ class MainActivity : WeatherActivity(), WeatherUiHost {
     private var explicitWidgetEntry = false
     private val selectedCityPrefKey = "selected_city_key"
 
-    private var homeEntrancePlayed = false
     private var firstHomeFrame = false
     private var initialSampleCity: CityPage? = null
-    private var startupBackgroundReady = false
-    private var startupWeather: Pair<String, Boolean>? = null
-    private var showingStartupSky = true
-    private val showStartupWeather = Runnable {
-        startupBackgroundReady = true
-        val weather = startupWeather
-        startupWeather = null
-        if (!isDestroyed && !isFinishing && weather != null) {
-            setWeatherBackground(weather.first, weather.second)
-        }
-    }
+    internal var homeContentReadyForDraw = false
+        private set
 
-    internal fun takeHomeEntrance(): Boolean {
-        if (homeEntrancePlayed) return false
-        homeEntrancePlayed = true
-        return ValueAnimator.areAnimatorsEnabled()
+    internal fun onHomeContentReadyForDraw() {
+        homeContentReadyForDraw = true
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        homeEntrancePlayed = savedInstanceState != null
         freeWeatherNotice.restore(savedInstanceState)
         // Debug 真机验收可由启动参数临时强制白天多云外观；不写入用户设置。
         WeatherAppearancePreview.configure(intent)
@@ -159,15 +152,18 @@ class MainActivity : WeatherActivity(), WeatherUiHost {
         }
 
         pager = findViewById(R.id.main)
-        startupBackgroundReady = savedInstanceState != null || !ValueAnimator.areAnimatorsEnabled()
         pager.doOnPreDraw {
-            firstHomeFrame = true
-            pager.postOnAnimation {
+            pager.postDelayed({
                 if (!isDestroyed && !isFinishing) {
-                    pager.offscreenPageLimit = maxOf(1, cityPages.size - 1)
+                    android.os.Looper.myQueue().addIdleHandler {
+                        if (!isDestroyed && !isFinishing) {
+                            firstHomeFrame = true
+                            pager.offscreenPageLimit = maxOf(1, cityPages.size - 1)
+                        }
+                        false
+                    }
                 }
-            }
-            if (!startupBackgroundReady) pager.postDelayed(showStartupWeather, 180L)
+            }, 900L)
         }
         bindCityPager()
         // 页面切换：只有内容（refreshLayout）左右滑动；
@@ -271,7 +267,10 @@ class MainActivity : WeatherActivity(), WeatherUiHost {
     private fun requestInitialPermissions() {
         if (initialPermissionFlowStarted || isFinishing || isDestroyed) return
         initialPermissionFlowStarted = true
-        permissionCoordinator.requestColdStart(onLocationReady = { getLocation() }) {
+        permissionCoordinator.requestColdStart(onLocationReady = {
+            initialLocationPermissionChecked = true
+            pager.post { requestHomeLocation() }
+        }) {
             WeatherBackgroundScheduler.schedule(this)
             initialPermissionFlowCompleted = true
             pager.post { freeWeatherNotice.maybeShow() }
@@ -300,6 +299,14 @@ class MainActivity : WeatherActivity(), WeatherUiHost {
             pager.setCurrentItem(WeatherHomeSelection.defaultIndex(cityPages), false)
         }
         explicitWidgetEntry = false
+        pager.post {
+            if (pendingManualLocation && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                pendingManualLocation = false
+                getLocation(manual = true)
+            } else {
+                requestHomeLocation()
+            }
+        }
         if (returningFromWeatherCard && sameForeground) {
             returningFromWeatherCard = false
             wasStopped = false
@@ -343,7 +350,6 @@ class MainActivity : WeatherActivity(), WeatherUiHost {
     }
 
     override fun onDestroy() {
-        if (::pager.isInitialized) pager.removeCallbacks(showStartupWeather)
         bgTransitionId++
         bgAnimator?.cancel()
         freeWeatherNotice.dispose()
@@ -353,6 +359,7 @@ class MainActivity : WeatherActivity(), WeatherUiHost {
     override fun onStop() {
         super.onStop()
         wasStopped = true
+        foregroundLocation.cancelRequests()
         // 不在后台继续启动排队中的城市刷新；已开始的请求会保留其正常回调保护。
         entryRefreshGeneration++
         entryRefreshHandler.removeCallbacksAndMessages(null)
@@ -415,20 +422,19 @@ class MainActivity : WeatherActivity(), WeatherUiHost {
                 pager.postDelayed({ refreshAllCitiesOnEntry(attachRetry + 1) }, 220L)
                 return@post
             }
-            refreshNextEntryCity(queue, current, ++entryRefreshGeneration)
+            refreshNextEntryCity(queue, ++entryRefreshGeneration)
         }
     }
 
     private fun refreshNextEntryCity(
         queue: ArrayDeque<WeatherFragment>,
-        current: CityPage?,
         generation: Int
     ) {
         if (generation != entryRefreshGeneration || wasStopped || isFinishing || isDestroyed) return
         val fragment = queue.pollFirst() ?: return
-        fragment.refreshOnEntry(showIndicator = current != null && fragment.matchesPage(current)) {
+        fragment.refreshOnEntry {
             entryRefreshHandler.postDelayed(
-                { refreshNextEntryCity(queue, current, generation) },
+                { refreshNextEntryCity(queue, generation) },
                 WeatherRefreshPolicy.BETWEEN_CITIES_DELAY_MS
             )
         }
@@ -449,13 +455,6 @@ class MainActivity : WeatherActivity(), WeatherUiHost {
         }
         prefs.edit().putString("cities", arr.toString()).apply()
         WeatherWidgets.render(this)
-    }
-
-    private fun confirmInitialSample(): Boolean {
-        if (initialSampleCity == null) return false
-        initialSampleCity = null
-        saveCities()
-        return true
     }
 
     private fun loadCities(): ArrayList<CityPage> {
@@ -493,12 +492,15 @@ class MainActivity : WeatherActivity(), WeatherUiHost {
     // 各城市天气加载后上报：天气相同则背景完全不动；不同则全局背景整体淡入淡出
     fun setWeatherBackground(skycon: String?, night: Boolean) {
         if (skycon.isNullOrBlank()) return
-        if (!startupBackgroundReady) {
-            startupWeather = skycon to night
+        if (!homeContentReadyForDraw) {
+            if (skycon == currentBgSkycon && night == currentBgNight) return
+            bgCurrent.setWeather(skycon, night)
+            bgCurrent.setBottomLandscapeProgress(backgroundFooterProgress)
+            currentBgSkycon = skycon
+            currentBgNight = night
+            applyStatusBarStyle(WeatherBackgroundPalette.statusBarUsesLightIcons(skycon, night))
             return
         }
-        val firstScene = showingStartupSky
-        showingStartupSky = false
         // Pager reports every frame. Never restart an already-running identical target.
         if (bgFadeRunning && skycon == pendingBgSkycon && night == pendingBgNight) return
         if (!bgFadeRunning && skycon == currentBgSkycon && night == currentBgNight) return
@@ -517,7 +519,7 @@ class MainActivity : WeatherActivity(), WeatherUiHost {
         }
 
         // 仅昼夜变化（如跨过日出/日落时刻）：原地重建当前背景，不做淡入淡出
-        if (skycon == currentBgSkycon && !bgFadeRunning && !firstScene) {
+        if (skycon == currentBgSkycon && !bgFadeRunning) {
             bgFadeRunning = false
             pendingBgSkycon = null
             currentBgNight = night
@@ -547,13 +549,11 @@ class MainActivity : WeatherActivity(), WeatherUiHost {
         // 先递增代际再取消旧动画：旧动画的 onAnimationEnd 因 id 不匹配而直接返回，
         // 不再翻转 currentBgIsA / currentBgSkycon / bgFadeRunning。
         bgAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = if (firstScene) 430L else 220L
-            if (firstScene) interpolator = android.view.animation.DecelerateInterpolator(1.5f)
+            duration = 220L
             addUpdateListener { anim ->
                 val f = anim.animatedValue as Float
                 to.alpha = initialTargetAlpha + (1f - initialTargetAlpha) * f
-                // The first scene sits above an opaque backdrop throughout its fade.
-                from.alpha = if (firstScene) initialSourceAlpha else initialSourceAlpha * (1f - f)
+                from.alpha = initialSourceAlpha * (1f - f)
             }
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
@@ -762,22 +762,74 @@ class MainActivity : WeatherActivity(), WeatherUiHost {
     override fun hostStatusBarStyle(lightIcons: Boolean) =
         applyStatusBarStyle(lightIcons)
 
-    internal fun retryForegroundLocation() {
-        permissionCoordinator.requestForegroundLocation { getLocation(manual = true) }
+    private val weatherSettingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (it.resultCode == WeatherSettingsActivity.RESULT_RETRY_LOCATION) {
+            permissionCoordinator.requestForegroundLocation {
+                pendingManualLocation = true
+                pager.post {
+                    if (pendingManualLocation && lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                        pendingManualLocation = false
+                        getLocation(manual = true)
+                    }
+                }
+            }
+        }
+    }
+
+    internal fun openWeatherSettings() {
+        weatherSettingsLauncher.launch(Intent(this, WeatherSettingsActivity::class.java))
+    }
+
+    internal fun requestHomeLocation(userRefresh: Boolean = false) {
+        if (!initialLocationPermissionChecked || !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) ||
+            isFinishing || isDestroyed) return
+        if (cityPages.any { it.isCurrentLocation } && lastLocationRecoverySession >= 0) return
+        val session = WeatherForegroundSession.current
+        val granted = WeatherPermissionCoordinator.hasForegroundLocation(this)
+        val ready = granted && foregroundLocation.isEnabled()
+        val shouldRetry = lastLocationRecoverySession != session || (ready && !lastLocationRecoveryReady)
+        lastLocationRecoveryReady = ready
+        if (automaticLocationInProgress || (!shouldRetry && !(userRefresh && granted))) return
+        lastLocationRecoverySession = session
+        getLocation()
     }
 
     private fun getLocation(manual: Boolean = false) {
+        if (manual) {
+            selectLocationAfterFix = true
+            if (WeatherPermissionCoordinator.hasForegroundLocation(this) && foregroundLocation.isEnabled()) {
+                toast("正在获取当前位置")
+            }
+        }
         if (automaticLocationInProgress) return
         automaticLocationInProgress = true
-        foregroundLocation.request(preferCache = !manual, timeoutMillis = 15_000L) { location, event ->
-            if (isFinishing || isDestroyed) return@request
+        foregroundLocation.request(preferCache = !manual, timeoutMillis = 45_000L) { location, event ->
             if (location == null) {
                 automaticLocationInProgress = false
-                if (confirmInitialSample() || manual) toast(event.label)
+                val showFailure = selectLocationAfterFix
+                selectLocationAfterFix = false
+                if (event == WeatherDiagnostics.Event.LOCATION_CANCELLED) {
+                    lastLocationRecoverySession = -1L
+                    return@request
+                }
+                if (isFinishing || isDestroyed || wasStopped) return@request
+                if (initialSampleCity != null || showFailure) toast(when (event) {
+                    WeatherDiagnostics.Event.LOCATION_TIMEOUT ->
+                        "暂未取得位置，可到开阔处重试或手动添加城市"
+                    WeatherDiagnostics.Event.LOCATION_NO_PROVIDER ->
+                        "没有可用的定位服务，请检查系统定位或手动添加城市"
+                    else -> event.label
+                })
             } else {
                 foregroundLocation.reverseGeocode(location) { name, detail ->
                     automaticLocationInProgress = false
-                    if (!isFinishing && !isDestroyed) applyLocationPage(location, name, detail, manual)
+                    val selectLocation = selectLocationAfterFix
+                    selectLocationAfterFix = false
+                    if (!isFinishing && !isDestroyed && !wasStopped) {
+                        applyLocationPage(location, name, detail, selectLocation)
+                    } else {
+                        lastLocationRecoverySession = -1L
+                    }
                 }
             }
         }
@@ -802,18 +854,19 @@ class MainActivity : WeatherActivity(), WeatherUiHost {
         val target = if (manual || selected == null || selected.isCurrentLocation) 0
             else cityPages.indexOfFirst { it.selectionKey() == selectedKey }.coerceAtLeast(0)
         pager.setCurrentItem(target, false)
+        WeatherDiagnostics.record(this, WeatherDiagnostics.Event.LOCATION_APPLIED)
     }
 
     // Pull-to-refresh requests a live fix. Existing weather remains usable if it fails.
-    fun requestLocationRefresh(onDone: (Boolean, Double, Double, String) -> Unit) {
+    internal fun requestLocationRefresh(onDone: (CityPage?) -> Unit) {
         foregroundLocation.request(preferCache = false, timeoutMillis = 8_000L) { location, _ ->
-            if (location == null || isFinishing || isDestroyed) {
-                onDone(false, 0.0, 0.0, "")
+            if (location == null || isFinishing || isDestroyed || wasStopped) {
+                onDone(null)
                 return@request
             }
             foregroundLocation.reverseGeocode(location) { name, detail ->
-                if (isFinishing || isDestroyed) {
-                    onDone(false, 0.0, 0.0, "")
+                if (isFinishing || isDestroyed || wasStopped) {
+                    onDone(null)
                     return@reverseGeocode
                 }
                 val index = cityPages.indexOfFirst { it.isCurrentLocation }
@@ -821,12 +874,14 @@ class MainActivity : WeatherActivity(), WeatherUiHost {
                 val nearby = previous?.takeIf { distanceToCity(location, it) < 1_000f }
                 val displayName = name ?: nearby?.name ?: "我的位置"
                 val displayDetail = detail ?: nearby?.locationDetail.orEmpty()
-                if (previous != null) {
-                    cityPages[index] = previous.copy(name = displayName, lng = location.longitude,
-                        lat = location.latitude, locationDetail = displayDetail)
-                    saveCities()
+                val updated = previous?.copy(name = displayName, lng = location.longitude,
+                    lat = location.latitude, locationDetail = displayDetail)
+                if (updated != null) {
+                    cityPages[index] = updated
+                    if (updated != previous) saveCities()
+                    WeatherDiagnostics.record(this, WeatherDiagnostics.Event.LOCATION_APPLIED)
                 }
-                onDone(true, location.longitude, location.latitude, displayDetail.ifBlank { displayName })
+                onDone(updated)
             }
         }
     }

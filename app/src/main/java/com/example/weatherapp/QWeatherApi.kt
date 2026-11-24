@@ -27,16 +27,19 @@ data class QNow(
 
 data class QHour(
     val timeMillis: Long,
-    val temp: Double,
+    val temp: Double?,
     val feelsLike: Double? = null,
     val skycon: String?,
     val text: String,
-    val pop: Double,
+    val pop: Double?,
     val windSpeedKmh: Double? = null,
     val humidityPercent: Double? = null,
     val pressureHpa: Double? = null,
     val visibilityKm: Double? = null,
-    val uvIndex: Double? = null
+    val uvIndex: Double? = null,
+    val windDirectionDegrees: Double? = null,
+    val precipitationAmountMm: Double? = null,
+    val gustKmh: Double? = null
 )
 
 data class QDay(
@@ -46,7 +49,9 @@ data class QDay(
     val low: Double?,
     val precipProb: Double?,
     val sunrise: String?,
-    val sunset: String?
+    val sunset: String?,
+    val windKmh: Double? = null,
+    val gustKmh: Double? = null
 )
 
 data class QAqi(
@@ -133,6 +138,16 @@ object QWeatherApi {
     /** 旧版直连入口；保留 Context 参数以兼容已改造的调用点。 */
     fun fetchAll(context: Context, lat: Double, lng: Double): QWeatherBundle =
         fetchAll(lat, lng, WeatherSettings.legacyQWeatherJwtConfig(context), context)
+
+    internal fun fetchAirOnly(context: Context, lat: Double, lng: Double): QWeatherBundle {
+        val config = WeatherSettings.legacyQWeatherJwtConfig(context)
+        val base = hostOf(config.host)
+        val token = QWeatherJwt.token(config)
+        val current = runCatching { fetchAqi(base, lat, lng, token) }.getOrNull()
+        val hourly = runCatching { fetchAqiHourly(base, lat, lng, token) }.getOrDefault(emptyList())
+        return QWeatherBundle(null, emptyList(), emptyList(), current, hourly,
+            updateTimeMillis = System.currentTimeMillis())
+    }
 
     fun fetchAlertsOnly(context: Context, lat: Double, lng: Double): List<QAlert> =
         runCatching { fetchAlertsOnly(lat, lng, WeatherSettings.legacyQWeatherJwtConfig(context)) }
@@ -333,7 +348,7 @@ object QWeatherApi {
                 val o = arr.optJSONObject(i) ?: continue
                 val t = parseTime(optStr(o, "fxTime"))
                 val temp = optD(o, "temp")
-                if (t == null || temp == null) continue
+                if (t == null) continue
                 out.add(
                     QHour(
                         timeMillis = t,
@@ -341,12 +356,15 @@ object QWeatherApi {
                         feelsLike = optD(o, "feelsLike"),
                         skycon = skyconFromIcon(optStr(o, "icon")),
                         text = optStr(o, "text"),
-                        pop = optD(o, "pop") ?: 0.0,
+                        pop = optD(o, "pop"),
                         windSpeedKmh = optD(o, "windSpeed"),
                         humidityPercent = optD(o, "humidity"),
                         pressureHpa = optD(o, "pressure"),
                         visibilityKm = optD(o, "vis"),
-                        uvIndex = optD(o, "uvIndex")
+                        uvIndex = optD(o, "uvIndex"),
+                        windDirectionDegrees = optD(o, "wind360"),
+                        precipitationAmountMm = optD(o, "precip"),
+                        gustKmh = optD(o, "windGust")
                     )
                 )
             }
@@ -371,6 +389,15 @@ object QWeatherApi {
                 val daytime = o.optJSONObject("daytime")
                 val condition = daytime?.optJSONObject("condition")
                 val astro = o.optJSONObject("astro")
+                val parts = listOfNotNull(daytime, o.optJSONObject("nighttime"))
+                fun speed(data: JSONObject?): Double? {
+                    val value = data?.let { optD(it, "value") } ?: return null
+                    return when (data.optString("unit").lowercase()) {
+                        "m/s", "knot", "kn" -> value * if (data.optString("unit") == "m/s") 3.6 else 1.852
+                        "km/h", "kmh", "" -> value
+                        else -> null
+                    }
+                }
                 out.add(
                     QDay(
                         date = o.optString("forecastStartTime").ifBlank {
@@ -379,8 +406,10 @@ object QWeatherApi {
                         skycon = skyconFromIcon(condition?.optString("code") ?: ""),
                         high = o.optJSONObject("temperatureMax")?.let { optD(it, "value") },
                         low = o.optJSONObject("temperatureMin")?.let { optD(it, "value") },
-                        precipProb = daytime?.optJSONObject("precipitation")
-                            ?.let { optD(it, "probability") }?.times(100.0),
+                        precipProb = parts.mapNotNull { it.optJSONObject("precipitation")
+                            ?.let { value -> optD(value, "probability") } }.maxOrNull()?.times(100.0),
+                        windKmh = parts.mapNotNull { speed(it.optJSONObject("wind")?.optJSONObject("speed")) }.maxOrNull(),
+                        gustKmh = parts.mapNotNull { speed(it.optJSONObject("windGustMax")) }.maxOrNull(),
                         sunrise = astro?.optString("sunrise")?.takeIf { it.isNotBlank() },
                         sunset = astro?.optString("sunset")?.takeIf { it.isNotBlank() }
                     )
@@ -736,5 +765,5 @@ object QWeatherApi {
         if (token.startsWith("api-key:")) mapOf("X-QW-Api-Key" to token.removePrefix("api-key:"))
         else mapOf("Authorization" to "Bearer $token")
 
-    private fun httpGet(urlStr: String, token: String): String = WeatherHttp.get(urlStr, authenticationHeaders(token))
+    private fun httpGet(urlStr: String, token: String): String = WeatherHttp.get(urlStr, authenticationHeaders(token), diagnosticSource = WeatherDiagnosticMonitor.Source.QWEATHER)
 }

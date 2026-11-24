@@ -72,7 +72,7 @@ class LifeAdviceActivity : WeatherActivity() {
                     content.addView(TextView(this).apply {
                         text = title; textSize = 13f
                         setTextColor(ContextCompat.getColor(this@LifeAdviceActivity, R.color.text_secondary))
-                        setPadding(dp(5), dp(16), 0, dp(10))
+                        setPadding(dp(5), dp(11), 0, dp(6))
                     })
                     rows.forEach { content.addView(adviceRow(it, dark)) }
                 }
@@ -84,10 +84,10 @@ class LifeAdviceActivity : WeatherActivity() {
     private fun adviceRow(item: LifeAdviceItem, dark: Boolean): View = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setBackgroundResource(R.drawable.bg_metric_detail_panel)
-        setPadding(dp(14), dp(12), dp(14), dp(12))
+        setPadding(dp(14), dp(9), dp(14), dp(9))
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(10) }
+        ).apply { bottomMargin = dp(8) }
         val freeSource = WeatherSettings.useOpenMeteo(this@LifeAdviceActivity)
         val statusText = item.level.ifBlank { if (freeSource) "当前不支持" else "暂无等级" }
         val statusColor = LifeAdviceStatusStyle.colorFor(item, dark)

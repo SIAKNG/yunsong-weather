@@ -11,7 +11,9 @@ data class DailyForecast(
     val skycon: String?,
     val high: Int?,
     val low: Int?,
-    val precipProb: Int?
+    val precipProb: Int?,
+    val highCelsius: Double? = high?.toDouble(),
+    val lowCelsius: Double? = low?.toDouble()
 )
 
 object OpenMeteo {
@@ -363,7 +365,7 @@ object OpenMeteo {
     }
 
     private fun httpGet(urlStr: String): String? = try {
-        WeatherHttp.get(urlStr)
+        WeatherHttp.get(urlStr, diagnosticSource = WeatherDiagnosticMonitor.Source.OPEN_METEO)
     } catch (e: Exception) {
         null
     }

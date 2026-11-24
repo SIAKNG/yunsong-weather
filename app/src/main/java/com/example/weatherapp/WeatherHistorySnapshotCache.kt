@@ -81,7 +81,7 @@ object CaiyunWeatherHistorySnapshotCache {
     fun load(context: Context, page: CityPage): CaiyunWeatherHistorySnapshot? {
         val parsed = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(key(context, page), null)
-            ?.let { runCatching { gson.fromJson(it, CaiyunWeatherHistorySnapshot::class.java) }.getOrNull() }
+            ?.let { runCatching { gson.fromJson(WeatherDiskCache.unpack(it), CaiyunWeatherHistorySnapshot::class.java) }.getOrNull() }
             ?: return null
         val now = System.currentTimeMillis()
         val hourly = CaiyunWeatherHistoryPolicy.mergeHourly(parsed.hourly.orEmpty(), emptyList(), now)
@@ -104,9 +104,13 @@ object CaiyunWeatherHistorySnapshotCache {
             hourly = CaiyunWeatherHistoryPolicy.mergeHourly(old?.hourly.orEmpty(), hourly, now),
             daily = CaiyunWeatherHistoryPolicy.mergeDaily(old?.daily.orEmpty(), daily, now)
         )
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString(key(context, page), gson.toJson(merged))
-            .apply()
+        val target = key(context, page)
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val packed = WeatherDiskCache.pack(gson.toJson(merged))
+        WeatherDiskCache.write(context, prefs) {
+            putString(target, packed)
+            putLong("$target@at", merged.savedAtMillis)
+        }
     }
 
     private fun key(context: Context, page: CityPage): String = String.format(

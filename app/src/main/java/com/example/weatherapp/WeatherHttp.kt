@@ -21,10 +21,20 @@ object WeatherHttp {
      * so an invalid token or request never creates a retry storm.
      */
     @Throws(IOException::class)
-    fun get(url: String, headers: Map<String, String> = emptyMap()): String {
+    fun get(url: String, headers: Map<String, String> = emptyMap()): String =
+        get(url, headers, diagnosticSource = null)
+
+    internal fun get(
+        url: String,
+        headers: Map<String, String> = emptyMap(),
+        diagnosticSource: WeatherDiagnosticMonitor.Source?
+    ): String {
         var lastError: IOException? = null
         repeat(MAX_ATTEMPTS) { attempt ->
             val connection = URL(url).openConnection() as HttpURLConnection
+            val request = diagnosticSource?.let { WeatherDiagnosticMonitor.requestStart(it) }
+            var status: Int? = null
+            var failure: IOException? = null
             try {
                 connection.requestMethod = "GET"
                 if (BuildConfig.USER_CONFIGURABLE && headers.isNotEmpty()) connection.instanceFollowRedirects = false
@@ -34,6 +44,7 @@ object WeatherHttp {
                 headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
 
                 val code = connection.responseCode
+                status = code
                 if (code in 200..299) {
                     val stream = if (connection.getHeaderField("Content-Encoding")
                             ?.contains("gzip", ignoreCase = true) == true
@@ -56,10 +67,12 @@ object WeatherHttp {
                 // 4xx 是确定性请求错误；最后一次 5xx 也应立即向上层报告。
                 throw error
             } catch (error: IOException) {
+                failure = error
                 if (attempt == MAX_ATTEMPTS - 1) throw error
                 lastError = error
             } finally {
                 connection.disconnect()
+                WeatherDiagnosticMonitor.requestFinished(request, status, failure)
             }
 
             try {

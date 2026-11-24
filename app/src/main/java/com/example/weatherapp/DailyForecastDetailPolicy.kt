@@ -13,7 +13,7 @@ data class ForecastDaySnapshot(
 ) : Serializable {
     companion object {
         fun from(day: DailyForecast) = ForecastDaySnapshot(day.date.take(10),day.skycon,
-            day.high?.toDouble(),day.low?.toDouble(),day.precipProb?.takeIf {it in 0..100})
+            day.highCelsius,day.lowCelsius,day.precipProb?.takeIf {it in 0..100})
     }
 }
 

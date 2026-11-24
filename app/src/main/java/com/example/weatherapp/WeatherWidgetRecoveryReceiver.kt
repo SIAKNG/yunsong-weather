@@ -2,6 +2,7 @@ package com.example.weatherapp
 
 import android.app.AlarmManager
 import android.app.PendingIntent
+import android.appwidget.AppWidgetManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -9,11 +10,38 @@ import android.content.Intent
 /** A widget is a recovery opportunity, not a resident service or a second notification ledger. */
 class WeatherWidgetRecoveryReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == WeatherWidgetCalendarAlarm.ACTION) {
+            WeatherWidgetCalendarAlarm.schedule(context)
+            WeatherWidgets.render(context)
+            return
+        }
         WeatherWidgetRecoveryAlarm.schedule(context, fired = true)
         if (WeatherWidgetStore.ids(context).isEmpty()) return
         WeatherWidgets.restore(context)
         WeatherWidgets.refresh(context, false)
         WeatherReminderRecovery.repair(context)
+    }
+}
+
+internal object WeatherWidgetCalendarAlarm {
+    const val ACTION = "com.example.weatherapp.WIDGET_NEXT_DATE"
+
+    fun schedule(context: Context) {
+        val manager = AppWidgetManager.getInstance(context)
+        val hasClock = WeatherWidgetCatalog.all(context).any {
+            WeatherClockWidget.supports(it.kind) && manager.getAppWidgetIds(it.provider).isNotEmpty()
+        }
+        val intent = Intent(context, WeatherWidgetRecoveryReceiver::class.java).setAction(ACTION)
+        val flags = PendingIntent.FLAG_IMMUTABLE
+        if (hasClock) {
+            val pending = PendingIntent.getBroadcast(context, 7118, intent, flags or PendingIntent.FLAG_UPDATE_CURRENT)
+            WeatherAlarmCompat.schedule(context, WeatherClockWidget.nextMidnight(System.currentTimeMillis()), pending)
+        } else {
+            PendingIntent.getBroadcast(context, 7118, intent, flags or PendingIntent.FLAG_NO_CREATE)?.let {
+                context.getSystemService(AlarmManager::class.java).cancel(it)
+                it.cancel()
+            }
+        }
     }
 }
 

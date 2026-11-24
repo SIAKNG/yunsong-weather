@@ -145,14 +145,14 @@ internal class ForecastWeatherPage(
     val selectedMetric: String? get() = dailyPanel?.selectedMetric?.name
     private val periodLabel get()=if(day==null) "未来48小时" else "当日"
     val summaryMetrics=buildSummaryMetrics()
-    private val body = LinearLayout(this).apply {
+    private val body = DetailViewportColumn(this).apply {
         orientation=LinearLayout.VERTICAL;tag="forecast_page:${day?.date ?: "48h"}"
         setPadding(dp(20),dp(4),dp(20),dp(12))
         addSummary(this);addChartSection(this)
     }
     val view = DetailScrollView(this).apply {
         addView(body, FrameLayout.LayoutParams(-1, -2))
-        overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+        overScrollMode = View.OVER_SCROLL_NEVER
         setOnScrollChangeListener { _, _, y, _, _ -> onVerticalScroll?.invoke(y) }
         if (initialScrollY > 0) post { scrollTo(0, initialScrollY) }
     }
@@ -171,7 +171,7 @@ internal class ForecastWeatherPage(
             row.addView(sectionTitle("信息摘要"),LinearLayout.LayoutParams(0,-2,1f))
             val todayButton=FrostedActionButton(this).apply {
                 tag="forecast_return_today";text="返回今日";textSize=11f;gravity=Gravity.CENTER
-                minHeight = dp(32); setPadding(dp(10), dp(5), dp(10), dp(5))
+                useCompactDetailCapsule()
                 setOnClickListener {onReturnToCurrent?.invoke() ?: resetToCurrent()}
             }
             DetailReturnCurrentButtonStyle.apply(todayButton,atToday || unavailable,palette.primary,palette.secondary,
@@ -179,6 +179,7 @@ internal class ForecastWeatherPage(
             todayButton.contentDescription=when {unavailable -> "暂无今日预报";atToday -> "已位于今日";else -> "返回今日天气"}
             ViewCompat.setStateDescription(todayButton,if(atToday || unavailable) "不可点击" else "可点击")
             row.addView(todayButton,LinearLayout.LayoutParams(-2,-2))
+            row.keepDetailCapsuleTouchable(todayButton)
             parent.addView(row,LinearLayout.LayoutParams(-1,-2))
         }
         parent.addView(
@@ -190,7 +191,14 @@ internal class ForecastWeatherPage(
                 secondary = palette.secondary,
                 divider = palette.grid,
                 metrics = summaryMetrics,
-                compactTemperature = day == null
+                compactTemperature = true,
+                dailyWeather = day?.let { page ->
+                    val skycon = page.daily?.skycon?.takeIf { WeatherIconCache.skyconToIcon(it) != null }
+                        ?: page.hours.mapNotNull { hour ->
+                            hour.skycon?.replace("_NIGHT", "_DAY")?.takeIf { WeatherIconCache.skyconToIcon(it) != null }
+                        }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
+                    DailySummaryWeather(skycon)
+                }
             ),
             LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
         )
@@ -230,7 +238,7 @@ internal class ForecastWeatherPage(
                 else ((current - displayedLow) / (displayedHigh - displayedLow)).toFloat().coerceIn(0f, 1f)
             }
             val outlook = if(day == null) twoDayTemperatureOutlook(futurePoints) else
-                "${day.daily?.skycon?.let {WeatherText.skyconToText(it)}.orEmpty()} · 当日温差${((high-low)*if(WeatherSettings.tempUnit(this)=="f") 1.8 else 1.0).roundToInt()}°".trim(' ','·') to DailyForecastDetailPolicy.temperatureAdvice(low,high)
+                "当日温差${((high-low)*if(WeatherSettings.tempUnit(this)=="f") 1.8 else 1.0).roundToInt()}°" to DailyForecastDetailPolicy.temperatureAdvice(low,high)
             HourlyForecastSummaryMetric(
                 kind = HourlyForecastSummaryKind.TEMPERATURE,
                 label = "气温范围",
@@ -406,10 +414,13 @@ internal class ForecastWeatherPage(
         return if (bestLevel == worstLevel) overall else "$overall，短时$worstLevel"
     }
 
-    private fun addChartSection(parent: LinearLayout) {
+    private fun addChartSection(parent: DetailViewportColumn) {
         if (day != null) {
             dailyPanel=DailyForecastMetricPanel(this,day,initialMetric,onMetricChanged,initialScrollX,onScrollPosition)
-                .also { parent.addView(it,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(8)}) }
+                .also {
+                    parent.addView(it, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+                    parent.fitChart(it.chart, 182)
+                }
             return
         }
         parent.addView(buildLegend(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
@@ -433,9 +444,11 @@ internal class ForecastWeatherPage(
             setSelectedIndex(selectedIndex)
         }
         // The time axis scrolls horizontally inside a chart with its own measured height.
-        hourlyScroll.addView(chart, ViewGroup.LayoutParams(chart.totalWidth, ViewGroup.LayoutParams.WRAP_CONTENT))
-        host.addView(hourlyScroll, FrameLayout.LayoutParams(-1, -2))
-        parent.addView(host, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(3) })
+        hourlyScroll.addView(chart, ViewGroup.LayoutParams(chart.totalWidth, ViewGroup.LayoutParams.MATCH_PARENT))
+        host.addView(hourlyScroll, FrameLayout.LayoutParams(-1, -1))
+        val textExtra = (resources.weatherSp(15f) - dp(15)).coerceAtLeast(0f)
+        parent.addView(host, LinearLayout.LayoutParams(-1, dp(330) + (textExtra * 6f).roundToInt()).apply { topMargin = dp(3) })
+        parent.fitChart(host, 294)
 
         hourlyScroll.setOnScrollChangeListener { _, scrollX, _, _, _ ->
             onScrollPosition?.invoke(scrollX)
@@ -496,13 +509,12 @@ internal class ForecastWeatherPage(
         returnCurrentButton = FrostedActionButton(this@ForecastWeatherPage).apply {
             tag="forecast_return_current"
             text = "回到当前"
-            textSize = 9f
+            textSize = 10f
             gravity = Gravity.CENTER
             setTextColor(palette.primary)
             setOnClickListener { onReturnToCurrent?.invoke() ?: resetToCurrent() }
         }
-        returnCurrentButton.minHeight = dp(28)
-        returnCurrentButton.setPadding(dp(6), dp(4), dp(6), dp(4))
+        returnCurrentButton.useCompactDetailCapsule(horizontalPaddingDp = 6, verticalPaddingDp = 2, heightDp = 25)
         addView(returnCurrentButton, LinearLayout.LayoutParams(-2, -2).apply {
             if (stacked) { gravity = Gravity.END; topMargin = dp(5) } else marginStart = dp(4)
         })

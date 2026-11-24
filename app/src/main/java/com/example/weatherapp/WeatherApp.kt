@@ -9,6 +9,7 @@ class WeatherApp : Application() {
     override fun onCreate() {
         super.onCreate()
         registerActivityLifecycleCallbacks(WeatherForegroundSession)
+        WeatherDiagnosticMonitor.initialize(this)
         if (BuildConfig.USER_CONFIGURABLE && WeatherSettings.caiyunMinutelyCapability(this) == WeatherSettings.CAIYUN_MINUTELY_CHECKING)
             WeatherSettings.resetCaiyunMinutelyCapability(this)
         WeatherSettings.applyNightMode(this)
@@ -16,5 +17,6 @@ class WeatherApp : Application() {
         // 设置及详情页面读取到同一组手机主题色；不支持动态配色的设备会自然回退主题默认值。
         DynamicColors.applyToActivitiesIfAvailable(this)
         WeatherStartupMaintenance.schedule(this)
+        WeatherDiskCache.schedule(this)
     }
 }

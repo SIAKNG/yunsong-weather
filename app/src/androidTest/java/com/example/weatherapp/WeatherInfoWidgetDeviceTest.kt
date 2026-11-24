@@ -62,7 +62,7 @@ class WeatherInfoWidgetDeviceTest {
         val foreground=ActivityScenario.launch(WeatherWidgetActivity::class.java).onActivity{it.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)}
         val host=AppWidgetHost(c,8854);val manager=AppWidgetManager.getInstance(c);val allocated=mutableListOf<Int>()
         try {
-            assertEquals(10,WeatherWidgetCatalog.all(c).size)
+            assertEquals(12,WeatherWidgetCatalog.all(c).size)
             for((kind,provider) in providers){
                 val id=host.allocateAppWidgetId();allocated+=id
                 ins.uiAutomation.adoptShellPermissionIdentity("android.permission.BIND_APPWIDGET")

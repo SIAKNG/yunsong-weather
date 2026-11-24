@@ -34,8 +34,12 @@ internal object WeatherRiskRefresh {
         if (!qweatherAvailable(context)) return@buildList
         if (alerts && WeatherSettings.disasterReminder(context)) add {
             WeatherRiskBranches.fetchAndPublish(isCurrent,
-                { QWeatherApi.fetchAlertsOnlyChecked(context, city.lat, city.lng) },
-                { events -> WeatherNotificationCenter.reconcileAlerts(context, city, events.mapNotNull { qAlert(city, it) }) })
+                { if (WeatherSettings.useQWeatherSupplement(context)) QWeatherSupplement.alerts(context, city)
+                    else QWeatherApi.fetchAlertsOnlyChecked(context, city.lat, city.lng) },
+                { events ->
+                    if (!WeatherSettings.useQWeatherSupplement(context)) WeatherCache.saveHomeAlerts(context, city, events)
+                    WeatherNotificationCenter.reconcileAlerts(context, city, events.mapNotNull { qAlert(city, it) })
+                })
         }
         if (rain && WeatherSettings.rainReminder(context)) add {
             WeatherRiskBranches.fetchAndPublish(isCurrent,
@@ -65,7 +69,11 @@ internal object WeatherRiskRefresh {
     }
 
     private suspend fun caiyun(context: Context, city: CityPage, isCurrent: () -> Boolean): RefreshOutcome {
-        val freeSource = WeatherSettings.dataSource(context) == "open_meteo"
+        val freeSource = WeatherSettings.useOpenMeteo(context)
+        val hybrid = WeatherSettings.useQWeatherSupplement(context)
+        if (hybrid && !WeatherSettings.temperatureChangeReminder(context) && !WeatherSettings.strongWindReminder(context))
+            return WeatherRiskBranches.run(isCurrent, qweatherBranches(context, city, isCurrent,
+                rain = false, temperature = false, wind = false))
         var authorizationDenied = false
         val response = try {
             // Bypass the repository's optional minute probe: publish the single composite
@@ -90,6 +98,8 @@ internal object WeatherRiskRefresh {
             realtime.status == "ok" && (realtime.wind?.speed?.isFinite() == true || realtime.gust?.isFinite() == true)
         } == true
         val branches = mutableListOf<suspend () -> Unit>()
+        if (hybrid)
+            branches += qweatherBranches(context, city, isCurrent, rain = false, temperature = false, wind = false)
         // Put locally available alert/minute publication before optional network requests.
         if (ownAlerts && WeatherSettings.disasterReminder(context)) branches += suspend {
             if (isCurrent()) WeatherNotificationCenter.reconcileAlerts(context, city,
@@ -196,13 +206,14 @@ internal object WeatherRiskRefresh {
             key = WeatherAlertIdentity.providerKey(city, type, alert.senderName, alert.id, alert.issuedTimeMillis),
             semanticKey = WeatherAlertIdentity.semanticKey(city, type, alert.senderName, alert.issuedTimeMillis),
             source = "qweather", title = WeatherAlertPresentation.title(alert), level = level,
+            notificationArea = WeatherNoticeCopy.warningArea(alert.senderName, city.name),
             severityRank = WeatherAlertPresentation.severityRank(level),
             detail = WeatherAlertPresentation.cleanDetail(alert.description.ifBlank { alert.instruction }),
             expiresAt = alert.expireTimeMillis.takeIf { it > System.currentTimeMillis() }
                 ?: System.currentTimeMillis() + 24L * 60L * 60_000L)
     }
 
-    private fun caiyunAlert(city: CityPage, alert: AlertContent): WeatherAlertEvent? {
+    internal fun caiyunAlert(city: CityPage, alert: AlertContent): WeatherAlertEvent? {
         if (alert.status.equals("cancel", true) || AlertVisibilityPolicy.isAgriculturalAlert(
                 alert.type.orEmpty(), alert.title.orEmpty(), alert.source.orEmpty())) return null
         val type = WeatherAlertPresentation.normalizedType(alert.type ?: alert.subtype ?: alert.subType ?: alert.title)
@@ -213,6 +224,8 @@ internal object WeatherRiskRefresh {
             key = WeatherAlertIdentity.providerKey(city, type, area, alert.alertId, issued),
             semanticKey = WeatherAlertIdentity.semanticKey(city, type, area, issued),
             source = "caiyun", title = WeatherAlertPresentation.title(alert), level = level,
+            notificationArea = listOf(alert.county, alert.city).firstOrNull { !it.isNullOrBlank() }
+                ?: WeatherNoticeCopy.warningArea(alert.source.orEmpty(), city.name),
             severityRank = WeatherAlertPresentation.severityRank(level),
             detail = WeatherAlertPresentation.cleanDetail(alert.description ?: alert.content),
             expiresAt = System.currentTimeMillis() + 24L * 60L * 60_000L)

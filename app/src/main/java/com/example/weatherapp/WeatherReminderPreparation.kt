@@ -27,36 +27,105 @@ internal object WeatherReminderPreparation {
     private fun identity(c: Context, city: CityPage) =
         WeatherWidgetPolicy.sourceKey(c) + "|" + WeatherSettings.tempUnit(c) + "|" + WeatherNotificationLedger.cityKey(city)
 
+    private data class NoticeDay(
+        val low: Double,
+        val high: Double,
+        val sky: String?,
+        val rain: Double?,
+        val aqi: Double?,
+        val wind: Double?,
+        val gust: Double?,
+        val savedAt: Long
+    )
+
+    private fun noticeDay(snapshot: WeatherCache.HomeStartup, date: String, now: Long): NoticeDay? {
+        val caiyun = snapshot.caiyun
+        val daily = caiyun?.fresh?.result?.daily
+        val temp = daily?.temperature.orEmpty().firstOrNull { it.date?.take(10) == date }
+        val min = temp?.min?.takeIf(Double::isFinite)
+        val max = temp?.max?.takeIf(Double::isFinite)
+        if (caiyun != null && min != null && max != null && WeatherCachePolicy.dailyUsable(now - caiyun.savedAt)) {
+            return NoticeDay(min, max,
+                daily?.skycon.orEmpty().firstOrNull { it.date?.take(10) == date }?.value,
+                daily?.precipitation.orEmpty().firstOrNull { it.date?.take(10) == date }?.probability,
+                daily?.airQuality?.aqi.orEmpty().firstOrNull { it.date?.take(10) == date }?.avg?.chn,
+                daily?.wind.orEmpty().firstOrNull { it.date?.take(10) == date }?.max?.speed,
+                null, caiyun.savedAt)
+        }
+        val qweather = snapshot.qweather ?: return null
+        val q = qweather.fresh?.daily.orEmpty().firstOrNull { it.date.take(10) == date } ?: return null
+        val low = q.low?.takeIf(Double::isFinite) ?: return null
+        val high = q.high?.takeIf(Double::isFinite) ?: return null
+        if (!WeatherCachePolicy.dailyUsable(now - qweather.savedAt)) return null
+        return NoticeDay(low, high, q.skycon, q.precipProb?.div(100), null, q.windKmh, q.gustKmh, qweather.savedAt)
+    }
+
     @Synchronized fun prepareFromCache(c: Context, city: CityPage, now: Long = System.currentTimeMillis()) {
         if (!enabled(c)) return
         val selected = WeatherCityStore.currentLocationCity(c) ?: return
         if (!WeatherWidgetPolicy.sameCity(selected, city)) return
         val source = WeatherWidgetPolicy.sourceKey(c)
         val scope = identity(c, selected)
-        val daily = if (WeatherSettings.useQWeather(c)) null else WeatherCache.loadCaiyun(c, selected)?.result?.daily
-        val qDaily = if (WeatherSettings.useQWeather(c)) WeatherCache.loadQWeather(c, selected)?.daily.orEmpty() else emptyList()
+        val selectedQWeather = WeatherSettings.useQWeather(c)
+        val background = if (selectedQWeather) {
+            WeatherCache.HomeStartup(qweather = WeatherCache.loadQWeatherStartup(c, selected))
+        } else {
+            WeatherCache.HomeStartup(caiyun = WeatherCache.loadCaiyunStartup(c, selected))
+        }
+        val foreground = WeatherCache.loadForegroundStartup(c, selected)?.takeIf {
+            if (selectedQWeather) it.qweather != null else it.caiyun != null
+        }
+        val caiyun = background.caiyun?.fresh?.result
+        val qweather = background.qweather?.fresh
+        val daily = caiyun?.daily
+        val qDaily = qweather?.daily.orEmpty()
+        val hours = ForecastDayHistoryCache.load(c, selected, now)
+        val zone = ZoneId.systemDefault()
+        val cachedWarnings = WeatherCache.loadHomeAlerts(c, selected)
+        val qAlerts = cachedWarnings + foreground?.qweather?.fresh?.alerts.orEmpty() + qweather?.alerts.orEmpty()
+        val caiyunAlerts = (foreground?.caiyun?.fresh?.result?.alert?.content.orEmpty() +
+            caiyun?.alert?.content.orEmpty()).mapNotNull { item ->
+            val timestamp = item.pubTimestamp ?: return@mapNotNull null
+            val issuedAt = if (timestamp in 1..9_999_999_999L) timestamp * 1_000 else timestamp
+            if (now - issuedAt !in 0L until 24L * ForecastDetailData.HOUR) return@mapNotNull null
+            WeatherRiskRefresh.caiyunAlert(selected, item)
+        }
         val today = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).toLocalDate()
         val items = JSONObject()
+        val homeDates = mutableSetOf<String>()
         for (date in listOf(today, today.plusDays(1))) {
             val key = date.toString()
-            val day = daily?.temperature.orEmpty().firstOrNull { it.date?.take(10) == key }
-            val q = qDaily.firstOrNull { it.date.take(10) == key }
-            val low = day?.min ?: q?.low
-            val high = day?.max ?: q?.high
-            if (low == null || high == null) continue
-            val sky = daily?.skycon.orEmpty().firstOrNull { it.date?.take(10) == key }?.value ?: q?.skycon
-            val rain = daily?.precipitation.orEmpty().firstOrNull { it.date?.take(10) == key }?.probability ?: q?.precipProb
-            val advice = when {
-                rain != null && rain >= 50.0 -> "有较高降雨可能，提前备好雨具并留意路面湿滑。"
-                rain != null && rain >= 20.0 -> "可能有短时降雨，出门建议随身带伞。"
-                else -> "按温差增减衣物，出门留意天气变化。"
+            val visible = foreground?.let { noticeDay(it, key, now) }
+            val forecast = visible ?: noticeDay(background, key, now) ?: continue
+            if (visible != null) homeDates += key
+            val start = date.atStartOfDay(zone).toInstant().toEpochMilli()
+            val end = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+            val dateHours = hours.filter { it.time in start until end }
+            val airHours = dateHours.filter { it.aqi?.isFinite() == true }
+            val aqi = forecast.aqi ?: airHours.takeIf {
+                it.size >= 6 && it.last().time - it.first().time >= 12L * ForecastDetailData.HOUR
+            }?.mapNotNull { it.aqi }?.average()
+            val qWarning = qAlerts.filter {
+                it.expireTimeMillis > maxOf(start, now) && it.issuedTimeMillis < end &&
+                    !it.messageType.equals("cancel", true) &&
+                    !AlertVisibilityPolicy.isAgriculturalAlert(it.eventTypeName, it.headline, it.senderName)
+            }.maxByOrNull { WeatherAlertPresentation.severityRank(WeatherAlertPresentation.levelName(it)) }
+            val caiyunWarning = if (date == today) caiyunAlerts.maxByOrNull { it.severityRank } else null
+            val warning = when {
+                caiyunWarning != null -> WeatherNoticeCopy.warningSummary(caiyunWarning.notificationArea, caiyunWarning.title)
+                qWarning != null -> WeatherNoticeCopy.warningSummary(
+                    WeatherNoticeCopy.warningArea(qWarning.senderName, selected.name), WeatherAlertPresentation.title(qWarning))
+                else -> null
             }
-            items.put(key, "${WeatherText.skyconToText(sky)}，${WeatherSettings.tempText(c, low)}–${WeatherSettings.tempText(c, high)}。$advice")
+            val range = "预计最低 ${WeatherSettings.tempText(c, forecast.low)}，最高 ${WeatherSettings.tempText(c, forecast.high)}"
+            val message = WeatherNoticeCopy.daily(range, forecast.low, forecast.high, forecast.sky, aqi,
+                forecast.rain, forecast.wind ?: dateHours.mapNotNull { it.wind }.maxOrNull(),
+                forecast.gust ?: dateHours.mapNotNull { it.gustKmh }.maxOrNull(), warning)
+            items.put(key, JSONObject().put("text", message).put("dataAt", forecast.savedAt))
         }
         if (source != WeatherWidgetPolicy.sourceKey(c) || scope != identity(c, selected)) return
         // Preserve the observation/cache age when reading, rather than making old data fresh.
-        val saved = WeatherCache.savedAt(c, selected)
-        if (items.length() > 0 && saved > 0 && saved <= now + WeatherCachePolicy.CLOCK_SKEW_MS) {
+        if (items.length() > 0) {
             val p = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val previous = runCatching { JSONObject(p.getString("snapshot", "{}").orEmpty()) }.getOrDefault(JSONObject())
             val days = if (previous.optString("scope") == scope) previous.optJSONObject("days") ?: JSONObject() else JSONObject()
@@ -66,12 +135,15 @@ internal object WeatherReminderPreparation {
                 if (age !in 0..WeatherReminderTiming.PREPARED_MAX_AGE_MS) days.remove(date)
             }
             for (date in items.keys()) {
-                if ((days.optJSONObject(date)?.optLong("dataAt", 0L) ?: 0L) <= saved)
-                    days.put(date, JSONObject().put("text", items.getString(date)).put("dataAt", saved))
+                val next = items.getJSONObject(date)
+                if (date in homeDates || (days.optJSONObject(date)?.optLong("dataAt", 0L) ?: 0L) <= next.getLong("dataAt")) {
+                    days.put(date, next)
+                }
             }
             p.edit().putString("snapshot", JSONObject().put("scope", scope).put("days", days).toString()).commit()
         }
         if (WeatherSettings.temperatureChangeReminder(c)) {
+            val saved = background.caiyun?.savedAt ?: background.qweather?.savedAt ?: 0L
             // After midnight, recover a previous evening event from the same dated forecast.
             for (comparison in listOf(today.minusDays(1), today)) {
                 val event = if (daily != null) WeatherReminderPolicy.temperatureChange(selected, daily, comparison)

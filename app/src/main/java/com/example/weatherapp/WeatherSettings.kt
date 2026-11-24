@@ -14,6 +14,7 @@ object WeatherSettings {
     const val SOURCE_CAIYUN = "caiyun"
     const val SOURCE_QWEATHER = "qweather"
     const val SOURCE_OPEN_METEO = "open_meteo"
+    const val SOURCE_OPEN_METEO_QWEATHER = "open_meteo_qweather"
 
     const val CAIYUN_ACCESS_LEGACY_DIRECT = "legacy_direct"
     const val CAIYUN_ACCESS_SHARED = "shared"
@@ -52,7 +53,11 @@ object WeatherSettings {
 
     /** 旧安装的 source 偏好被忽略，避免后台回调把页面切回旧数据源。 */
     fun dataSource(c: Context): String = if (BuildConfig.USER_CONFIGURABLE) UserApiConfiguration.read(c).effectiveSource() else SOURCE_CAIYUN
-    fun useOpenMeteo(c: Context): Boolean = dataSource(c) == SOURCE_OPEN_METEO
+    fun useOpenMeteo(c: Context): Boolean = when (dataSource(c)) {
+        SOURCE_OPEN_METEO, SOURCE_OPEN_METEO_QWEATHER -> true
+        else -> false
+    }
+    fun useQWeatherSupplement(c: Context): Boolean = dataSource(c) == SOURCE_OPEN_METEO_QWEATHER
     fun sourceKey(c: Context): String = dataSource(c) + "_r" + if (BuildConfig.USER_CONFIGURABLE) UserApiConfiguration.revision(c) else 0
 
     fun setDataSource(c: Context, v: String) {

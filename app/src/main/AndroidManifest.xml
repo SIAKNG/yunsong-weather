@@ -3,6 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -10,6 +11,19 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <queries>
+        <intent><action android:name="android.intent.action.SENDTO" /><data android:scheme="mailto" /></intent>
+        <intent><action android:name="android.intent.action.SEND" /><data android:mimeType="application/zip" /></intent>
+        <intent><action android:name="android.intent.action.MANAGE_APP_PERMISSION" /></intent>
+        <intent><action android:name="android.intent.action.MANAGE_APP_PERMISSIONS" /></intent>
+        <intent><action android:name="android.settings.APP_PERMISSIONS_SETTINGS" /></intent>
+        <intent><action android:name="android.settings.APP_NOTIFICATION_SETTINGS" /></intent>
+        <intent><action android:name="android.settings.CHANNEL_NOTIFICATION_SETTINGS" /></intent>
+        <intent><action android:name="android.settings.LOCATION_SOURCE_SETTINGS" /></intent>
+        <intent><action android:name="android.settings.REQUEST_SCHEDULE_EXACT_ALARM" /><data android:scheme="package" /></intent>
+        <intent><action android:name="android.settings.APPLICATION_DETAILS_SETTINGS" /><data android:scheme="package" /></intent>
+    </queries>
 
     <application
         android:name=".WeatherApp"
@@ -172,6 +186,16 @@
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/weather_widget_weekly" />
             <meta-data android:name="com.example.weatherapp.WIDGET_TEMPLATE" android:value="weekly" />
+        </receiver>
+        <receiver android:name=".WeatherClockHourlyWidget" android:exported="false" android:label="@string/widget_clock_hourly_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/weather_widget_clock_hourly" />
+            <meta-data android:name="com.example.weatherapp.WIDGET_TEMPLATE" android:value="clock_hourly" />
+        </receiver>
+        <receiver android:name=".WeatherClockWeeklyWidget" android:exported="false" android:label="@string/widget_clock_weekly_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/weather_widget_clock_weekly" />
+            <meta-data android:name="com.example.weatherapp.WIDGET_TEMPLATE" android:value="clock_weekly" />
         </receiver>
         <receiver android:name=".WeatherAirWidget" android:exported="false" android:label="@string/widget_air_name">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>

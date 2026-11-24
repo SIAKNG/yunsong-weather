@@ -39,7 +39,7 @@
         <View android:layout_width="40dp" android:layout_height="1dp" />
     </LinearLayout>
 
-    <ScrollView
+    <com.example.weatherapp.ElasticWeatherScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
@@ -137,5 +137,5 @@
                 android:textColor="@color/text_primary"
                 android:textSize="15sp" />
         </LinearLayout>
-    </ScrollView>
+    </com.example.weatherapp.ElasticWeatherScrollView>
 </LinearLayout>

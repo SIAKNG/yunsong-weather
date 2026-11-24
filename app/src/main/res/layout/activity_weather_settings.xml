@@ -42,7 +42,7 @@
             android:layout_height="1dp" />
     </LinearLayout>
 
-    <ScrollView
+    <com.example.weatherapp.ElasticWeatherScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
@@ -166,7 +166,7 @@
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" style="@style/SettingsSwitchRow">
                     <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceTitle" android:text="极端天气提醒" />
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsSwitchHint" android:text="天气可能带来风险时，及时提醒你做好防护" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsSwitchHint" android:text="收到气象预警时，查看发布地区、预警等级和官方提醒。" />
                     </LinearLayout>
                     <android.widget.Switch style="@style/WeatherSystemSwitch"
                         android:id="@+id/switchDisasterReminder"
@@ -177,7 +177,7 @@
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" style="@style/SettingsSwitchRow">
                     <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceTitle" android:text="变温提醒" />
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsSwitchHint" android:text="气温明显升降时，提前提醒你添减衣物" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsSwitchHint" android:text="明天气温变化明显时，提前提醒你准备衣物。" />
                     </LinearLayout>
                     <android.widget.Switch style="@style/WeatherSystemSwitch" android:id="@+id/switchTemperatureReminder" android:layout_width="wrap_content" android:layout_height="wrap_content" />
                 </LinearLayout>
@@ -185,7 +185,7 @@
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" style="@style/SettingsSwitchRow">
                     <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceTitle" android:text="大风提醒" />
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsSwitchHint" android:text="风势增强时，提醒你留意出行与户外安全" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsSwitchHint" android:text="风明显变大或阵风较强时，提醒你留意出行与户外安排。" />
                     </LinearLayout>
                     <android.widget.Switch style="@style/WeatherSystemSwitch" android:id="@+id/switchWindReminder" android:layout_width="wrap_content" android:layout_height="wrap_content" />
                 </LinearLayout>
@@ -193,7 +193,7 @@
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" style="@style/SettingsSwitchRow">
                     <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceTitle" android:text="降雨提醒" />
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsSwitchHint" android:text="降雨临近或雨势变化时，提醒你带好雨具" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsSwitchHint" android:text="附近快下雨、雨势变大或雨快停时，帮你提前安排出门。" />
                     </LinearLayout>
                     <android.widget.Switch style="@style/WeatherSystemSwitch"
                         android:id="@+id/switchRainReminder"
@@ -204,7 +204,7 @@
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" style="@style/SettingsSwitchRow">
                     <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
                         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsChoiceTitle" android:text="每日天气预报" />
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsSwitchHint" android:text="贴心了解日常天气，提前安排穿衣与出行" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" style="@style/SettingsSwitchHint" android:text="早上看今天，晚上看明天。了解气温、空气质量和风雨，提前安排出门。" />
                     </LinearLayout>
                     <android.widget.Switch style="@style/WeatherSystemSwitch"
                         android:id="@+id/switchDailyReminder"
@@ -234,7 +234,7 @@
                     android:layout_marginTop="14dp"
                     android:background="@drawable/btn_see_more"
                     android:gravity="center"
-                    android:text="发送三类测试通知"
+                    android:text="发送四类测试通知"
                     android:textColor="@color/text_primary"
                     android:textSize="14sp"
                     android:textStyle="bold" />
@@ -245,7 +245,18 @@
                     android:layout_marginTop="8dp"
                     android:background="@drawable/btn_see_more"
                     android:gravity="center"
-                    android:text="打开系统通知与后台设置"
+                    android:text="打开系统通知设置"
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/btnOpenExactAlarmSettings"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/btn_see_more"
+                    android:gravity="center"
+                    android:text="打开精确闹钟设置"
                     android:textColor="@color/text_primary"
                     android:textSize="14sp"
                     android:textStyle="bold" />
@@ -253,7 +264,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
-                    android:text="本机提醒会受 OPPO/一加省电策略影响，不能保证分钟级及时；请在系统页检查通知、后台运行、自启动及精确闹钟。"
+                    android:text="本机提醒会受 OPPO/一加省电策略影响，不能保证分钟级及时；请在系统中允许云松天气后台运行及自启动。"
                     android:textColor="@color/text_tertiary"
                     android:textSize="12sp" />
             </LinearLayout>
@@ -308,7 +319,7 @@
                 <TextView android:id="@+id/btnProblemDiagnostics" android:layout_width="match_parent"
                     android:layout_height="wrap_content" android:minHeight="60dp" android:paddingVertical="16dp"
                     android:background="?attr/selectableItemBackground" android:gravity="center_vertical"
-                    android:text="问题诊断与定位" android:textColor="@color/text_primary"
+                    android:text="问题诊断与日志" android:textColor="@color/text_primary"
                     android:textSize="15sp" android:textStyle="bold" />
                 <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
                 <TextView android:id="@+id/btnAbout" android:layout_width="match_parent"
@@ -319,5 +330,5 @@
             </LinearLayout>
 
         </LinearLayout>
-    </ScrollView>
+    </com.example.weatherapp.ElasticWeatherScrollView>
 </LinearLayout>

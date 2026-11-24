@@ -9,7 +9,6 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
-import android.view.animation.DecelerateInterpolator
 import android.widget.ScrollView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 
@@ -77,7 +76,7 @@ class CloudSwipeRefreshLayout @JvmOverloads constructor(
             .coerceIn(280L, 430L)
         returnAnimator = ValueAnimator.ofFloat(start, 0f).apply {
             this.duration = duration
-            interpolator = DecelerateInterpolator(2.15f)
+            interpolator = WeatherScrollPhysics.settle
             addUpdateListener { animator ->
                 val value = animator.animatedValue as Float
                 contentTranslation = value
@@ -137,7 +136,7 @@ class CloudSwipeRefreshLayout @JvmOverloads constructor(
                 if (distance > 0f) {
                     val maxOffset = triggerDistancePx.coerceAtLeast(1) * 0.72f
                     // 阻尼跟手：与手指同向移动，但不会把内容拉出屏幕。
-                    setContentTranslation(minOf(distance * 0.58f, maxOffset))
+                    setContentTranslation(WeatherScrollPhysics.resistance(distance, maxOffset))
                     if (triggerDistancePx > 0) {
                         pullProgressListener?.invoke((distance / triggerDistancePx).coerceIn(0f, 1f))
                     }

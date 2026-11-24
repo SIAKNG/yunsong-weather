@@ -92,11 +92,11 @@ class ApiCapabilityProbeTest {
     }
     @Test fun businessAuthenticationCodeIsAlsoRecognized() {
         val r=ApiCapabilityProbe(ApiProbeTransport { ApiProbeReply(200,"""{"code":"401"}""") },now).run(q())
-        assertEquals(1,r.requests);assertEquals(ApiSupport.RESTRICTED,row(r,"首页实况").support)
+        assertEquals(1,r.requests);assertEquals(ApiSupport.RESTRICTED,row(r,"实时空气质量").support)
     }
     @Test fun forbiddenDoesNotBecomePermanentUnsupported() {
         val r=ApiCapabilityProbe(ApiProbeTransport { ApiProbeReply(403,"""{"error":{"type":"https://dev.qweather.com/docs/resource/error-code/#forbidden"}}""") },now).run(q())
-        assertEquals(ApiSupport.RESTRICTED,row(r,"首页实况").support)
+        assertEquals(ApiSupport.RESTRICTED,row(r,"实时空气质量").support)
         assertFalse(r.rows.any { it.detail.contains("永久不支持") })
     }
     @Test fun rateLimitStopsRepeatedProbes() {
@@ -113,14 +113,12 @@ class ApiCapabilityProbeTest {
     @Test fun qweatherUsesAppRoutesAndNativeAirSchemaWithoutFallback() {
         val seen=mutableListOf<ApiProbeRequest>();val fake=qTransport()
         val r=ApiCapabilityProbe(ApiProbeTransport { seen+=it;fake.get(it) },now).run(q())
-        assertEquals(9,r.requests)
+        assertEquals(4,r.requests)
+        assertTrue(seen.all { "/airquality/" in it.url || "/indices/" in it.url || "/weatheralert/" in it.url })
         assertTrue(seen.all { it.headers==mapOf("X-QW-Api-Key" to "private_dummy_key") && it.url.startsWith("https://test.qweatherapi.com/") })
         assertEquals(ApiSupport.SUPPORTED,row(r,"小时 AQI（目标24小时）").support)
         assertEquals(ApiSupport.SUPPORTED,row(r,"六项污染物").support)
         assertEquals(ApiSupport.SUPPORTED,row(r,"小时污染物 · pm25").support)
-        assertEquals(ApiSupport.PARTIAL,row(r,"小时气温 / 48小时页").support)
-        assertTrue(row(r,"多日页逐小时范围").detail.contains("24/168"))
-        assertEquals(ApiSupport.MISSING,row(r,"小时体感 / 48小时页").support)
         assertEquals(ApiSupport.SUPPORTED,row(r,"预警卡与通知数据").support)
         assertTrue(row(r,"预警卡与通知数据").detail.contains("无生效预警"))
         assertEquals(ApiSupport.LOCAL,row(r,"昨日/历史对比").support)
@@ -153,7 +151,7 @@ class ApiCapabilityProbeTest {
         val r=ApiCapabilityProbe(ApiProbeTransport { req -> when(req.provider) {
             "和风" -> fakeQ.get(req);"高德" -> ApiProbeReply(200,"""{"status":"1"}""");else -> fakeCy.get(req)
         } },now).run(cy().copy(qweatherHost=q().qweatherHost,qweatherApiKey=q().qweatherApiKey,amapKey="dummy"))
-        assertEquals(15,r.requests)
+        assertEquals(10,r.requests)
         assertEquals(ApiSupport.SUPPORTED,row(r,"城市输入提示").support)
     }
 }

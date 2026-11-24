@@ -100,8 +100,11 @@ class WeatherLargeTextDeviceTest {
                 assertFontLimit(activity)
                 assertScrollableContent(scroll)
                 scroll.scrollTo(0, scroll.getChildAt(0).height)
-                val pressure = body.findViewWithTag<View>("daily_metric:PRESSURE")
-                pressure.performClick()
+            }
+            settle()
+            chooseDailyMetric(scenario, "PRESSURE")
+            scenario.onActivity { activity ->
+                val body = activity.findViewById<View>(android.R.id.content).findViewWithTag<ViewGroup>("forecast_page:$date")
                 assertTrue(body.findViewWithTag<TextView>("daily_metric_reading").text.contains("气压"))
             }
             settle()

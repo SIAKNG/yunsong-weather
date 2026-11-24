@@ -51,12 +51,9 @@ object WeatherReminderPolicy {
         val changes = listOfNotNull(highDelta?.let { "最高温" to it }, lowDelta?.let { "最低温" to it })
             .filter { abs(it.second) >= 5 }
         if (changes.isEmpty()) return null
-        val detail = changes.joinToString("，") { (label, delta) ->
-            "$label${if (delta > 0) "升高" else "降低"}${abs(delta)}℃"
-        }
+        val (title, detail) = WeatherNoticeCopy.temperature(WeatherAddressFormatter.city(city.name), highDelta, lowDelta)
         return WeatherChangeEvent(city, "temperature",
-            today.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
-            1, "${WeatherAddressFormatter.city(city.name)}明日变温提醒", "明天较今天$detail，请及时增减衣物。")
+            today.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(), 1, title, detail)
     }
 
     /**

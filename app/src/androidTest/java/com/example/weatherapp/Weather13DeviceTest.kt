@@ -22,10 +22,10 @@ import android.view.PixelCopy
 class Weather13DeviceTest {
     private val ins = InstrumentationRegistry.getInstrumentation()
     private val context get()=ins.targetContext
-    @Test fun installedAndAboutVersionAreBoth13() {
+    @Test fun installedAndAboutVersionMatch() {
         @Suppress("DEPRECATION")
         val installed=context.packageManager.getPackageInfo(context.packageName,0)
-        assertTrue(installed.versionName.orEmpty().startsWith("1.3"))
+        assertEquals(BuildConfig.VERSION_NAME, installed.versionName)
         ActivityScenario.launch(WeatherAboutActivity::class.java).use {scenario ->
             scenario.onActivity {activity ->
                 assertTrue(activity.findViewById<TextView>(R.id.tvWeatherAboutVersion).text.contains(installed.versionName.orEmpty()))
@@ -40,33 +40,6 @@ class Weather13DeviceTest {
             h%10.0,40.0+h,35.0+h,false,135.0,h*2.0,if(h in 10..15) 1.2 else 0.0,25.0,1008.0+h%8,12.0)
     }
 
-    @Test fun capsuleShadowSlidesAndRapidClicksContinueFromItsCurrentPosition() {
-        val date=DailyForecastDetailPolicy.dateKey(midnight(0))
-        ActivityScenario.launch<ForecastDetailActivity>(ForecastDetailActivity.createIntent(context,"北京市",rows(0),date)).use {scenario ->
-            SystemClock.sleep(350);ins.waitForIdleSync()
-            var target=0f
-            scenario.onActivity {a ->
-                val root=a.findViewById<View>(android.R.id.content)
-                val thumb=root.findViewWithTag<View>("weather_segment_thumb")
-                assertTrue(thumb.elevation>0f)
-                val rain=root.findViewWithTag<View>("daily_metric:RAIN")
-                target=rain.left.toFloat();rain.performClick()
-                assertTrue(thumb.translationX<target)
-            }
-            SystemClock.sleep(65)
-            scenario.onActivity {a ->
-                val root=a.findViewById<View>(android.R.id.content)
-                val thumb=root.findViewWithTag<View>("weather_segment_thumb")
-                assertTrue("A visible intermediate frame precedes the selected location",thumb.translationX>0f && thumb.translationX<target)
-                val position=thumb.translationX
-                val wind=root.findViewWithTag<View>("daily_metric:WIND")
-                target=wind.left.toFloat();wind.performClick()
-                assertEquals("Rapid taps cannot reset or jump the moving shadow",position,thumb.translationX,.1f)
-            }
-            SystemClock.sleep(350);ins.waitForIdleSync()
-            scenario.onActivity {a ->assertEquals(target,a.findViewById<View>(android.R.id.content).findViewWithTag<View>("weather_segment_thumb").translationX,.5f)}
-        }
-    }
     @Suppress("UNCHECKED_CAST") private fun <T> field(target: Any,name: String): T=
         target.javaClass.getDeclaredField(name).apply {isAccessible=true}.get(target) as T
 
@@ -102,7 +75,7 @@ class Weather13DeviceTest {
         } finally {WeatherSettings.setTempUnit(context,original)}
     }
 
-    @Test fun dailyCapsulesUseMetricChartsKeepTheHourAndFitBothThemes() {
+    @Test fun dailyMetricMenuKeepsItsSelectionAfterRecreation() {
         val original=WeatherSettings.themeMode(context)
         try {
             for(dark in listOf(false,true)) {
@@ -120,35 +93,20 @@ class Weather13DeviceTest {
                         assertEquals("daily_summary_header",(todayButton.parent as View).tag)
                         assertFalse(todayButton.isEnabled)
                         assertNull(panel.findViewWithTag<View>("forecast_return_current"))
-                        val capsule=panel.findViewWithTag<ViewGroup>("daily_metric_capsule")
-                        assertNotNull(capsule)
-                        assertNotNull(capsule.findViewWithTag<View>("weather_segment_thumb"))
-                        assertTrue(panel.chart.height > 120*activity.resources.displayMetrics.density)
-                        assertTrue("The expanded graph uses nearly the full capsule width",panel.chart.width>capsule.width*.94f)
-                        val expectedTime=midnight(0)+11*ForecastDetailData.HOUR
-                        panel.chart.selectTime(expectedTime)
-                        for(metric in DailyForecastMetric.entries) {
-                            val option=panel.findViewWithTag<View>("daily_metric:${metric.name}")
-                            assertNull("Options share one capsule rather than separate pill backgrounds",option.background)
-                            option.performClick()
-                            assertEquals(metric,panel.selectedMetric)
-                            assertEquals(11,field<Int>(panel.chart,"selectedIndex"))
-                            assertEquals(24,field<DoubleArray>(panel.chart,"values").size)
-                            assertEquals(metric.value(rows(0)[11])!!,field<DoubleArray>(panel.chart,"values")[11],0.0)
-                        }
+                        assertNotNull(panel.findViewWithTag<View>("daily_metric_picker"))
+                        panel.chart.selectTime(midnight(0) + 11 * ForecastDetailData.HOUR)
                         val scroll = generateSequence(panel.parent) { (it as? View)?.parent }
                             .filterIsInstance<android.widget.ScrollView>().first()
                         scroll.scrollTo(0, scroll.getChildAt(0).height)
                         val visible = Rect()
                         assertTrue(panel.chart.getGlobalVisibleRect(visible))
                         assertEquals("Chart fits after scrolling to it", panel.chart.height, visible.height())
-                        panel.findViewWithTag<View>("daily_metric:TEMPERATURE").performClick()
                         val reading=panel.findViewWithTag<TextView>("daily_metric_reading")
                         assertTrue(reading.layout==null || reading.layout.getEllipsisCount(0)==0)
                     }
                     SystemClock.sleep(280);ins.waitForIdleSync()
                     capture(scenario,"daily-v13-${if(dark) "dark" else "light"}.png")
-                    scenario.onActivity {it.findViewById<View>(android.R.id.content).findViewWithTag<View>("daily_metric:PRESSURE").performClick()}
+                    chooseDailyMetric(scenario, "PRESSURE")
                     scenario.recreate();SystemClock.sleep(350);ins.waitForIdleSync()
                     scenario.onActivity {activity ->
                         assertEquals(DailyForecastMetric.PRESSURE,activity.findViewById<View>(android.R.id.content).findViewWithTag<DailyForecastMetricPanel>("daily_metric_panel").selectedMetric)
@@ -173,6 +131,9 @@ class Weather13DeviceTest {
             ForecastDayHistoryCache.save(fixture,city,rows(0),now)
             assertEquals(24,ForecastDayHistoryCache.load(fixture,city,now).size)
             val tomorrow=midnight(1)+ForecastDetailData.HOUR
+            val moved = city.copy(lat = city.lat + .003, isCurrentLocation = true)
+            assertEquals(24, ForecastDayHistoryCache.load(fixture, moved, tomorrow).size)
+            assertTrue(ForecastDayHistoryCache.load(fixture, moved.copy(isCurrentLocation = false), tomorrow).isEmpty())
             val previous=ForecastDayHistoryCache.load(fixture,city,tomorrow)
             assertEquals(24,previous.size);assertTrue(previous.all {it.isHistorical})
             assertTrue(ForecastDayHistoryCache.load(fixture,CityPage("上海",121.47,31.23,false),tomorrow).isEmpty())

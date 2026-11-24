@@ -23,4 +23,8 @@
     <string name="widget_cities_description">两座或三座城市的天气、实时体感与当日高低温</string>
     <string name="widget_daily_summary_name">云松天气 · 4×4 今日概览</string>
     <string name="widget_daily_summary_description">当天气温体感与环境范围、峰值及建议</string>
+    <string name="widget_clock_hourly_name">云松天气 · 2×4 时钟小时预报</string>
+    <string name="widget_clock_hourly_description">实时钟、公历农历、当前天气与未来六小时预报</string>
+    <string name="widget_clock_weekly_name">云松天气 · 2×4 时钟五日预报</string>
+    <string name="widget_clock_weekly_description">实时钟、公历农历、当前天气与未来五日预报</string>
 </resources>

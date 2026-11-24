@@ -387,6 +387,7 @@ object CaiyunDirectApi {
     private const val BASE_URL = "https://api.caiyunapp.com/"
 
     private val httpClient = OkHttpClient.Builder()
+            .addInterceptor(WeatherDiagnosticMonitor.network(WeatherDiagnosticMonitor.Source.CAIYUN))
         .followRedirects(!BuildConfig.USER_CONFIGURABLE)
         .followSslRedirects(!BuildConfig.USER_CONFIGURABLE)
         .connectTimeout(7, TimeUnit.SECONDS)

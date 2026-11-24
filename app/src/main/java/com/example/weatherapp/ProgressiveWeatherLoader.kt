@@ -15,21 +15,27 @@ internal class ProgressiveWeatherLoader(
     }
     private val flights=LinkedHashMap<String,Flight>()
 
-    fun load(key: String, weatherUrl: String, airUrl: String,
+    fun load(key: String, weatherUrl: String, airUrl: String?,
              primary: (String?,String?)->Unit, supplement: (String,String)->Unit) {
         val flight: Flight
         val start: Boolean
         synchronized(this) {
             val old=flights[key]
-            start=old==null || (old.weatherDone && old.airDone && (old.weather==null || clock()-old.started>freshnessMs))
-            flight=if(start) Flight(clock()).also {flights[key]=it} else old!!
+            start=old==null || (old.weatherDone && (old.weather == null || old.airDone && clock() - old.started > freshnessMs))
+            flight=if(start) Flight(clock()).also {it.airDone = airUrl == null; flights[key]=it} else old!!
             flight.listeners.add(Listener(primary,supplement))
             deliver(flight)
             if(flights.size>12) flights.entries.removeAll {it.key!=key && it.value.weatherDone && it.value.airDone}
         }
         if(!start) return
-        request(airUrl) { body -> synchronized(this) {flight.air=body;flight.airDone=true;deliver(flight)} }
         request(weatherUrl) { body -> synchronized(this) {flight.weather=body;flight.weatherDone=true;deliver(flight)} }
+        if (airUrl != null) request(airUrl) { body -> synchronized(this) {flight.air=body;flight.airDone=true;deliver(flight)} }
+    }
+
+    @Synchronized
+    fun discardWeather(key: String, weather: String) {
+        val flight = flights[key] ?: return
+        if (flight.weather == weather) flights.remove(key)
     }
 
     private fun deliver(f: Flight) {
@@ -42,6 +48,6 @@ internal class ProgressiveWeatherLoader(
                 listener.withAir=true;listener.supplement(f.weather!!,f.air!!)
             }
         }
-        if(f.airDone) f.listeners.clear()
+        if (f.airDone || f.weather == null) f.listeners.clear()
     }
 }

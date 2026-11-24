@@ -90,7 +90,7 @@
         android:layout_weight="1">
 
         <!-- 已保存城市卡片列表 -->
-        <ScrollView
+        <com.example.weatherapp.ElasticWeatherScrollView
             android:id="@+id/cityScroll"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
@@ -102,7 +102,7 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:padding="16dp" />
-        </ScrollView>
+        </com.example.weatherapp.ElasticWeatherScrollView>
 
         <!-- 搜索面板：默认隐藏，点击搜索框后渐隐城市卡片并显示 -->
         <LinearLayout

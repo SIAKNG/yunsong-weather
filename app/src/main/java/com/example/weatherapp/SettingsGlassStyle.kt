@@ -1,21 +1,26 @@
 package com.example.weatherapp
 
+import android.app.Activity
+import android.app.Dialog
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
+import android.view.WindowManager
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 
 /** Explicitly scoped to settings/help; never changes homepage or forecast surfaces. */
 internal object SettingsGlassStyle {
     /** PopupWindow is a separate window: capture the activity, not the popup root. */
-    fun decoratePopup(view: View, backdrop: View) {
-        decorate(view, backdrop = backdrop)
+    fun decoratePopup(view: View, backdrop: View, radiusDp: Float = 14f, material: PopupGlassMaterial = PopupGlassMaterial.MENU) {
+        decorate(view, radiusDp = radiusDp, backdrop = backdrop, material = material)
+        view.clipToOutline = true
     }
-    fun decorate(view: View, radiusDp: Float = 14f, action: Boolean = false, backdrop: View? = null) {
+    fun decorate(view: View, radiusDp: Float = 14f, action: Boolean = false, backdrop: View? = null, material: PopupGlassMaterial = PopupGlassMaterial.MENU) {
         val d = view.resources.displayMetrics.density
         val dark = WeatherSettings.isDarkTheme(view.context)
         val pad = intArrayOf(view.paddingLeft,view.paddingTop,view.paddingRight,view.paddingBottom)
@@ -23,7 +28,7 @@ internal object SettingsGlassStyle {
             cornerRadius = radiusDp * d
             setColor(ContextCompat.getColor(view.context,R.color.metric_detail_panel))
         }
-        if (!dark || backdrop != null) DetailGlassSurface.install(view,radiusDp*d,backdrop).setStateTint(action,!view.isEnabled)
+        if (!dark || backdrop != null) DetailGlassSurface.install(view, radiusDp * d, backdrop, popupMaterial = material).setStateTint(action,!view.isEnabled)
         view.foreground = WeatherFrostedBorderDrawable(d,radiusDp,dark)
         view.elevation = 4.5f*d
         view.outlineProvider = ViewOutlineProvider.BACKGROUND
@@ -53,4 +58,22 @@ internal object SettingsGlassStyle {
             repeat(root.childCount) { applyTree(root.getChildAt(it)) }
         }
     }
+}
+
+/** Only the app-owned surface is restyled. AlertDialog still handles sizing, focus and actions. */
+internal fun <T : Dialog> T.showFrosted(owner: Activity, radiusDp: Float = 22f): T {
+    show()
+    window?.let { dialogWindow ->
+        val decor = dialogWindow.decorView
+        val start = decor.paddingStart
+        val top = decor.paddingTop
+        val end = decor.paddingEnd
+        val bottom = decor.paddingBottom
+        dialogWindow.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        decor.setPaddingRelative(start, top, end, bottom)
+        SettingsGlassStyle.decoratePopup(decor, owner.window.decorView, radiusDp, PopupGlassMaterial.DIALOG)
+        dialogWindow.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        dialogWindow.attributes = dialogWindow.attributes.apply { dimAmount = if (WeatherSettings.isDarkTheme(owner)) .18f else .07f }
+    }
+    return this
 }

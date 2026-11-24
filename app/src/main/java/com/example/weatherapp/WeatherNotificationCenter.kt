@@ -93,8 +93,10 @@ object WeatherNotificationCenter {
             return AlertReconcileResult(emptyList(), emptyList(), events.size)
         val result = WeatherNotificationLedger.reconcileAlerts(context, city, events) { delivery ->
             val event = delivery.event
-            notify(context, event.notificationId, CHANNEL_ALERT, event.title,
-                event.detail.ifBlank { "请留意当地天气变化" },
+            val title = WeatherNoticeCopy.warningTitle(event.notificationArea, event.title, delivery.delivery == AlertDelivery.ESCALATED)
+            val body = WeatherNoticeCopy.warningBody(event.notificationArea, event.title, event.detail,
+                event.level.contains("红"))
+            notify(context, event.notificationId, CHANNEL_ALERT, title, body,
                 onlyAlertOnce = delivery.delivery == AlertDelivery.QUIET_UPDATE,
                 alertAgain = delivery.delivery == AlertDelivery.ESCALATED)
         }
@@ -119,14 +121,7 @@ object WeatherNotificationCenter {
             RainReconcileResult(null, WeatherNotificationLedger.clearRain(context))
         } else {
             WeatherNotificationLedger.reconcileRain(context, event, now) { delivery ->
-                val ending = delivery == RainDelivery.ENDING
-                val endingAt = event.forecast?.endingAt(now)
-                val title = if (ending) "${event.locationName}，${if (endingAt == null) "降雨已结束" else "雨即将结束"}"
-                    else WeatherRainPresentation.notificationTitle(event.locationName, event.firstRainAt, now)
-                val text = if (ending) {
-                    if (endingAt == null) "降雨已结束，后续预报时段暂无降雨，可以正常出行了。"
-                    else "预计约${((endingAt - now + 59_999L) / 60_000L).coerceAtLeast(1)}分钟后降雨结束，后续预报时段暂无降雨，雨停后可以正常出行。"
-                } else event.notificationText
+                val (title, text) = WeatherNoticeCopy.rain(event, delivery, now)
                 notify(context, event.notificationId, CHANNEL_RAIN, title, text,
                     onlyAlertOnce = delivery == RainDelivery.QUIET_UPDATE,
                     alertAgain = delivery != RainDelivery.QUIET_UPDATE)
@@ -158,7 +153,7 @@ object WeatherNotificationCenter {
         }
         if (!canNotifyChannel(context, CHANNEL_CHANGE)) return
         if (event.type == "wind") {
-            WindReminderDelivery.deliver(context, event.city, "${event.title}\u0000${event.detail}") {
+            WindReminderDelivery.deliver(context, event.city, event.deliveryFingerprint ?: "${event.title}\u0000${event.detail}") {
                 notify(context, 4400 + WeatherNotificationLedger.cityKey(event.city).stablePositiveHash(),
                     CHANNEL_CHANGE, event.title, event.detail, alertAgain = true)
             }
@@ -182,7 +177,9 @@ object WeatherNotificationCenter {
         TemperatureChangeDeliveryLedger.deliverDue(context, now, accept = {
             it.source == source && it.cityKey == WeatherNotificationLedger.cityKey(city)
         }) { pending ->
-            notify(context, pending.notificationId, CHANNEL_CHANGE, pending.title, pending.detail, alertAgain = true)
+            val (title, body) = WeatherNoticeCopy.temperatureAtDelivery(pending.title, pending.detail,
+                pending.forecastAtMillis, now)
+            notify(context, pending.notificationId, CHANNEL_CHANGE, title, body, alertAgain = true)
         }
     }
 
@@ -248,10 +245,10 @@ object WeatherNotificationCenter {
     fun postTestNotifications(context: Context): Boolean {
         ensureChannels(context)
         if (!canNotify(context)) return false
-        notify(context, TEST_ALERT_NOTIFICATION_ID, CHANNEL_ALERT, "暴雨黄色预警", "测试通知：灾害预警通道工作正常")
-        notify(context, TEST_RAIN_NOTIFICATION_ID, CHANNEL_RAIN, "降雨提醒", "测试通知：未来两小时可能有中雨")
-        notify(context, TEST_FORECAST_NOTIFICATION_ID, CHANNEL_FORECAST, "今日天气预报", "测试通知：晴，20～28℃")
-        notify(context, TEST_CHANGE_NOTIFICATION_ID, CHANNEL_CHANGE, "天气变化提醒", "测试通知：变温与大风通道工作正常")
+        notify(context, TEST_ALERT_NOTIFICATION_ID, CHANNEL_ALERT, "测试 · 北京市海淀区｜暴雨黄色预警", "这条通知用于确认预警通道可以正常显示。")
+        notify(context, TEST_RAIN_NOTIFICATION_ID, CHANNEL_RAIN, "测试 · 降雨提醒", "这条通知用于确认降雨通道可以正常显示。")
+        notify(context, TEST_FORECAST_NOTIFICATION_ID, CHANNEL_FORECAST, "测试 · 每日预报", "这条通知用于确认每日预报通道可以正常显示。")
+        notify(context, TEST_CHANGE_NOTIFICATION_ID, CHANNEL_CHANGE, "测试 · 天气变化", "变温与大风共用这个通知通道。")
         WeatherReminderDiagnostics.record(context, "通知测试", "已发送", "灾害、降雨、每日预报、天气变化四个样例")
         return true
     }
@@ -362,7 +359,17 @@ object WeatherNotificationCenter {
         onlyAlertOnce: Boolean = false,
         alertAgain: Boolean = false
     ): Boolean {
-        if (!canNotifyChannel(context, channelId)) return false
+        val diagnosticChannel = when (channelId) {
+            CHANNEL_ALERT -> "气象预警"
+            CHANNEL_RAIN -> "降雨"
+            CHANNEL_FORECAST -> "每日预报"
+            CHANNEL_CHANGE -> "天气变化"
+            else -> "其他通道"
+        }
+        if (!canNotifyChannel(context, channelId)) {
+            WeatherDiagnostics.event(context, "天气提醒", "$diagnosticChannel · 通知权限或通道未开启")
+            return false
+        }
         val launch = PendingIntent.getActivity(
             context,
             id,
@@ -382,8 +389,10 @@ object WeatherNotificationCenter {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
         return runCatching {
             NotificationManagerCompat.from(context).notify(id, builder.build())
+            WeatherDiagnostics.event(context, "天气提醒", "$diagnosticChannel · 已提交系统")
             true
         }.getOrElse {
+            WeatherDiagnostics.event(context, "天气提醒", "$diagnosticChannel · 投递失败")
             WeatherReminderDiagnostics.record(context, "通知投递", "失败", it.javaClass.simpleName)
             false
         }

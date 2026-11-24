@@ -62,6 +62,70 @@ class NotificationReliabilityDeviceTest {
         while(System.currentTimeMillis()<end && manager.activeNotifications.none{it.id==id}) Thread.sleep(25)
         assertTrue("Notification must reach Android",manager.activeNotifications.any{it.id==id})
     }
+    @Test fun androidShowsOfficialIssuerAndWindAdvice() {
+        WeatherSettings.setDisasterReminder(c, true)
+        WeatherSettings.setStrongWindReminder(c, true)
+        val warning = WeatherAlertEvent(
+            key = "beijing-haidian-fixture", title = "大雾橙色预警", level = "橙色",
+            severityRank = 3, detail = "请当地居民尽量避开能见度低的路段。",
+            expiresAt = System.currentTimeMillis() + 60_000L, notificationArea = "北京市海淀区")
+        ids += warning.notificationId
+        WeatherNotificationCenter.reconcileAlerts(c, city, listOf(warning))
+        awaitNotification(warning.notificationId)
+        val alert = manager.activeNotifications.first { it.id == warning.notificationId }.notification
+        assertEquals("北京市海淀区｜大雾橙色预警", alert.extras.getCharSequence(android.app.Notification.EXTRA_TITLE).toString())
+        assertTrue(alert.extras.getCharSequence(android.app.Notification.EXTRA_BIG_TEXT).toString().contains("海淀区居民"))
+        val wind = WindReminderPolicy.event(city, 49.0, null)!!
+        val notificationId = 4400 + WeatherNotificationLedger.cityKey(city).stablePositiveHash()
+        ids += notificationId
+        WeatherNotificationCenter.reconcileWeatherChange(c, wind)
+        awaitNotification(notificationId)
+        val shown = manager.activeNotifications.first { it.id == notificationId }.notification
+        assertTrue(shown.extras.getCharSequence(android.app.Notification.EXTRA_BIG_TEXT).toString().contains("骑车可以慢一点"))
+    }
+
+    @Test fun dailyReminderMatchesHomeForecastBeforeNewerBackgroundForecast() {
+        val today = LocalDate.now()
+        val now = System.currentTimeMillis()
+        WeatherSettings.setTempUnit(c, WeatherSettings.TEMP_C)
+        val scope = WeatherCache.homeScope(c) + "_location"
+        val response = CaiyunResponse(status = "ok", result = Result(
+            daily = Daily(temperature = listOf(DailyTemp(today.toString(), 19.4, 8.2)))))
+        val home = c.getSharedPreferences("weather_home_display", 0)
+        home.edit().putString("${scope}_json", Gson().toJson(response))
+            .putLong("${scope}_at", now - 10 * 60_000L)
+            .putLong("${scope}_lat", city.lat.toBits())
+            .putLong("${scope}_lng", city.lng.toBits()).commit()
+
+        val visible = WeatherCache.loadHomeStartup(c, city).caiyun?.fresh?.result?.daily
+            ?.temperature.orEmpty().first { it.date == today.toString() }
+        WeatherReminderPreparation.prepareFromCache(c, city, now + 50)
+        val message = WeatherReminderPreparation.message(c, city, today, now + 50).orEmpty()
+        assertTrue("Reminder should show the same low as the home forecast: $message",
+            message.contains(WeatherSettings.tempText(c, visible.min)))
+        assertTrue("Reminder should show the same high as the home forecast: $message",
+            message.contains(WeatherSettings.tempText(c, visible.max)))
+        assertNotNull("A date missing in the home snapshot can use the background forecast",
+            WeatherReminderPreparation.message(c, city, today.plusDays(1), now + 50))
+
+        WeatherSettings.setTempUnit(c, WeatherSettings.TEMP_F)
+        WeatherReminderPreparation.prepareFromCache(c, city, now + 50)
+        val fahrenheit = WeatherReminderPreparation.message(c, city, today, now + 50).orEmpty()
+        assertTrue(fahrenheit.startsWith("预计最低 47°F，最高 67°F"))
+        val detail = ForecastDaySnapshot.from(DailyForecast(today.toString(), null, 19, 8, null,
+            highCelsius = visible.max, lowCelsius = visible.min))
+        assertEquals("47°F", WeatherSettings.tempText(c, detail.low))
+        assertEquals("67°F", WeatherSettings.tempText(c, detail.high))
+        WeatherSettings.setTempUnit(c, WeatherSettings.TEMP_C)
+
+        // A past or expired home snapshot must not override a usable forecast for this day.
+        home.edit().putLong("${scope}_at", now - WeatherCachePolicy.DAILY_MS - 60_000L).commit()
+        WeatherReminderPreparation.prepareFromCache(c, city, now + 50)
+        val fallback = WeatherReminderPreparation.message(c, city, today, now + 50).orEmpty()
+        assertTrue(fallback.contains(WeatherSettings.tempText(c, 12.0)))
+        assertTrue(fallback.contains(WeatherSettings.tempText(c, 24.0)))
+    }
+
     @Test fun preparedForecastSurvivesOfflineAndExpiresWithoutBecomingFreshAgain() {
         WeatherReminderPreparation.prepareFromCache(c,city)
         assertNotNull(WeatherReminderPreparation.message(c,city,LocalDate.now()))
@@ -81,6 +145,10 @@ class NotificationReliabilityDeviceTest {
         MorningWeatherReceiver().onReceive(c, android.content.Intent().setAction(
             if(tomorrow) WeatherNotificationCenter.ACTION_DAILY_TOMORROW else WeatherNotificationCenter.ACTION_DAILY_TODAY))
         awaitNotification(id)
+        val shown = manager.activeNotifications.first { it.id == id }.notification
+        val body = shown.extras.getCharSequence(android.app.Notification.EXTRA_BIG_TEXT).toString()
+        assertTrue(body.contains("晴"))
+        assertTrue(body.contains("温差明显"))
         assertTrue(DailyForecastDeliveryLedger.delivered(c,tomorrow))
         manager.cancel(id)
         assertTrue(WeatherNotificationCenter.postDailyForecast(c,tomorrow))

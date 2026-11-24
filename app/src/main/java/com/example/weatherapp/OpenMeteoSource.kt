@@ -2,7 +2,12 @@ package com.example.weatherapp
 
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import java.io.EOFException
+import java.io.IOException
+import java.net.SocketException
+import java.net.SocketTimeoutException
 import okhttp3.Request
 import java.time.Instant
 import java.time.ZoneOffset
@@ -12,6 +17,7 @@ import java.util.concurrent.TimeUnit
 
 /** Credential-free source. Coordinates rounded to city-scale precision; no device/account headers. */
 object OpenMeteoSource {
+    private const val MAX_RESPONSE_BYTES = 1_500_000L
     private val loader = ProgressiveWeatherLoader({ url, callback ->
         client.newCall(request(url)).enqueue(object : okhttp3.Callback {
             override fun onFailure(call: okhttp3.Call, e: java.io.IOException) { callback(null) }
@@ -22,11 +28,16 @@ object OpenMeteoSource {
     })
 
     fun enqueue(lat: Double, lng: Double, primary: (GatewayResult<CaiyunResponse>)->Unit,
-                supplement: (GatewayResult<CaiyunResponse>)->Unit) {
+                supplement: (GatewayResult<CaiyunResponse>)->Unit, includeAir: Boolean = true) {
         val weatherUrl=weatherUrl(lat,lng)
-        loader.load(weatherUrl,weatherUrl,airUrl(lat,lng),{weather,air ->
+        val airUrl = if (includeAir) airUrl(lat,lng) else null
+        val key = "$weatherUrl|$includeAir"
+        loader.load(key, weatherUrl, airUrl, { weather, air ->
             primary(runCatching {GatewayResult(parse(requireNotNull(weather),air),200)}
-                .getOrElse {GatewayResult(code=0,message="Open-Meteo 暂不可用，请稍后重试")})
+                .getOrElse {
+                    if (weather != null) loader.discardWeather(key, weather)
+                    GatewayResult(code = 0, message = "Open-Meteo 暂不可用，请稍后重试")
+                })
         },{weather,air ->
             runCatching {GatewayResult(parse(weather,air),200)}.getOrNull()?.let(supplement)
         })
@@ -34,9 +45,43 @@ object OpenMeteoSource {
     private val china = ZoneOffset.ofHours(8)
     private val date = DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(china)
     private val clock = DateTimeFormatter.ofPattern("HH:mm").withZone(china)
-    private val client = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
-        .connectTimeout(8, TimeUnit.SECONDS).readTimeout(12, TimeUnit.SECONDS)
-        .callTimeout(18, TimeUnit.SECONDS).retryOnConnectionFailure(false).build()
+    private val client = OkHttpClient.Builder()
+            .addInterceptor(WeatherDiagnosticMonitor.network(WeatherDiagnosticMonitor.Source.OPEN_METEO))
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .connectTimeout(4, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .callTimeout(14, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
+        .addInterceptor(Interceptor { chain ->
+            val request = chain.request()
+            val first = try {
+                readThrough(chain, request)
+            } catch (error: IOException) {
+                if (chain.call().isCanceled() || !isTransientTransportFailure(error)) throw error
+                null
+            }
+            if (first != null && first.code() !in retryableHttpStatus) return@Interceptor first
+            first?.close()
+            readThrough(chain, request)
+        })
+        .build()
+
+    private fun readThrough(chain: Interceptor.Chain, request: Request): okhttp3.Response {
+        val response = chain.proceed(request)
+        try {
+            if (response.isSuccessful) response.body()?.source()?.request(MAX_RESPONSE_BYTES + 1)
+            return response
+        } catch (failure: IOException) {
+            response.close()
+            throw failure
+        }
+    }
+
+    private val retryableHttpStatus = setOf(408, 502, 503, 504)
+
+    private fun isTransientTransportFailure(error: IOException): Boolean =
+        error is SocketTimeoutException || error is SocketException || error is EOFException
     val hourlyFields = listOf("temperature_2m", "apparent_temperature", "relative_humidity_2m",
         "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m", "surface_pressure", "visibility",
         "uv_index", "weather_code", "precipitation_probability", "precipitation", "is_day")
@@ -55,10 +100,10 @@ object OpenMeteoSource {
             "&hourly=" + pollutionFields.joinToString(",") +
             "&forecast_days=5&past_days=1&timezone=Asia%2FShanghai&timeformat=unixtime"
 
-    fun fetch(lat: Double, lng: Double): GatewayResult<CaiyunResponse> = try {
+    fun fetch(lat: Double, lng: Double, includeAir: Boolean = true): GatewayResult<CaiyunResponse> = try {
         val weather = get(weatherUrl(lat,lng))
         // An independent AQ request failure must not discard otherwise valid weather.
-        val air = runCatching { get(airUrl(lat,lng)) }.getOrNull()
+        val air = if (includeAir) runCatching { get(airUrl(lat,lng)) }.getOrNull() else null
         GatewayResult(parse(weather,air),200)
     } catch (_: Exception) { GatewayResult(code=0,message="Open-Meteo 暂不可用，请稍后重试") }
 
@@ -69,14 +114,9 @@ object OpenMeteoSource {
 
     private fun read(r: okhttp3.Response): String {
         check(r.isSuccessful)
-        val input = requireNotNull(r.body()).byteStream()
-        val output = java.io.ByteArrayOutputStream()
-        val buffer = ByteArray(8192)
-        while (true) {
-            val n=input.read(buffer);if(n<0) break
-            check(output.size()+n<=1_500_000);output.write(buffer,0,n)
-        }
-        return output.toString("UTF-8")
+        val source = requireNotNull(r.body()).source()
+        check(!source.request(MAX_RESPONSE_BYTES + 1))
+        return source.readUtf8()
     }
 
     /** Reuse the existing presentation DTO, without representing the data as a Caiyun response. */
@@ -87,12 +127,13 @@ object OpenMeteoSource {
         requireNotNull(number(current,"temperature_2m"))
         val h=requireNotNull(w.getAsJsonObject("hourly"))
         val d=requireNotNull(w.getAsJsonObject("daily"))
-        fun times(o: JsonObject)=o.getAsJsonArray("time")?.mapNotNull { runCatching {it.asLong}.getOrNull() }.orEmpty()
+        fun times(o: JsonObject)=o.getAsJsonArray("time")?.map { it.asLong }.orEmpty()
         val ht=times(h);val dt=times(d)
-        fun timestamp(t: Long)=Instant.ofEpochSecond(t).atOffset(china).toString()
+        val timestamps = (ht).distinct().associateWith { Instant.ofEpochSecond(it).atOffset(china).toString() }
+        fun timestamp(t: Long)=timestamps[t] ?: Instant.ofEpochSecond(t).atOffset(china).toString()
         fun series(name: String, scale: Double=1.0)=ht.mapIndexed { i,t -> HourlyValue(timestamp(t),at(h,name,i)?.times(scale)) }
         val ah=runCatching { air?.let { JsonParser.parseString(it).asJsonObject.getAsJsonObject("hourly") } }.getOrNull()
-        val atimes=ah?.let(::times).orEmpty()
+        val atimes = runCatching { ah?.let(::times) }.getOrNull().orEmpty()
         fun pollutant(name: String,scale: Double=1.0)=atimes.mapIndexed { i,t -> HourlyValue(timestamp(t),at(ah,name,i)?.times(scale)) }
         val airValues=atimes.mapIndexed { i,t ->
             // Reference estimate from model concentrations, NOT a Chinese station observation.

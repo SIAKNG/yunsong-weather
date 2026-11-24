@@ -70,10 +70,9 @@ internal object ApiCapabilityDialog {
             .setCancelable(false)
         if(savedConfiguration) builder.setNegativeButton("继续修改") {_,_->edit()}
         val dialog=builder.create()
-        dialog.show()
+        dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        dialog.showFrosted(a)
         dialog.window?.apply {
-            addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-            setBackgroundDrawable(GradientDrawable().apply { cornerRadius=dp(22).toFloat();setColor(ContextCompat.getColor(a,R.color.page_bg)) })
             val available=a.window.decorView.height.takeIf { it>0 } ?: a.resources.displayMetrics.heightPixels
             setLayout(a.resources.displayMetrics.widthPixels-dp(24),(available*.88f).toInt())
         }

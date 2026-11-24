@@ -6,7 +6,6 @@ import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import androidx.activity.result.contract.ActivityResultContracts
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -26,6 +25,7 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
@@ -38,6 +38,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -52,12 +53,6 @@ import java.util.Locale
 
 // 单个城市的天气页：请求彩云天气数据并展示，左上角定位栏点击打开搜索页
 class WeatherFragment : Fragment() {
-    private val weatherSettingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        if (it.resultCode == WeatherSettingsActivity.RESULT_RETRY_LOCATION) {
-            (activity as? MainActivity)?.retryForegroundLocation()
-        }
-    }
-
     private lateinit var page: CityPage
     private var callbackPager: ViewPager2? = null
     private var renderedDisplaySettings: String? = null
@@ -114,7 +109,6 @@ class WeatherFragment : Fragment() {
         val maxHeight: Int
     )
     private var dailyBlurFreeze: DailyBlurFreeze? = null
-    private var lastSpacerSetAt = 0L
     private var modeTabWidth = 0
     private var statusBarHeight = 0
     private var refreshTasks = 0
@@ -127,6 +121,10 @@ class WeatherFragment : Fragment() {
     private var calibrationFetchSeq = 0
     private var lastServerTimeMillis = 0L
     private var displayingOldSnapshot = false
+    private var weatherBoundToView = false
+    private var startupFrame: CompletableDeferred<Unit>? = null
+    private var pendingHomeAlignment: ViewTreeObserver.OnPreDrawListener? = null
+    private val homeCardAppearance = HomeCardAppearanceTransition()
     private val refreshTipHideRunnable = Runnable {
         refreshTipRow.animate().alpha(0f).setDuration(300).withEndAction {
             refreshTipRow.visibility = View.GONE
@@ -179,57 +177,31 @@ class WeatherFragment : Fragment() {
      */
     private fun forecastRowsForDetail(): List<ForecastHour> {
         val now = System.currentTimeMillis()
-        val currentHour = now / ForecastDetailData.HOUR * ForecastDetailData.HOUR
-        val cachedMetrics = MetricHistoryTimelineCache.load(requireContext(), page, "caiyun_v26")
-        val historicalMetrics = (cachedMetrics?.points.orEmpty() + yesterdayMetricPoints)
-            .associateBy { it.timeMillis / ForecastDetailData.HOUR }
-        val historicalWeather = CaiyunWeatherHistorySnapshotCache.load(requireContext(), page)
-            ?.hourly.orEmpty()
-            .associateBy { it.timeMillis / ForecastDetailData.HOUR }
-
-        // 48 小时卡片及其二级页只保留当前整点前一小时；缺字段只画断线，不以推算值代替。
-        val historySlots = listOf(currentHour - ForecastDetailData.HOUR).map { time ->
-            val hour = time / ForecastDetailData.HOUR
-            val metric = historicalMetrics[hour]
-            val weather = historicalWeather[hour]
-            (metric ?: HourlyMetricPoint(timeMillis = time)).copy(
-                timeMillis = time,
-                temperature = metric?.temperature ?: weather?.temperature,
-                uv = metric?.uv ?: weather?.uv,
-                precipitationProbability = metric?.precipitationProbability
-                    ?: weather?.precipitationProbability
-            )
-        }
-        val historySky = historySlots.associate { point ->
-            point.timeMillis / ForecastDetailData.HOUR to
-                historicalWeather[point.timeMillis / ForecastDetailData.HOUR]?.skycon
-        }
-        val historicalAir = (cachedMetrics?.airQualityPoints.orEmpty() + historicalAirQualityPoints)
-            .distinctBy { it.timeMillis / ForecastDetailData.HOUR }
-        return ForecastDetailData.build(
-            historySlots + hourlyMetricPoints,
-            historySky + forecastSkyByHour,
-            historicalAir + airQualityTimeline.pointsWithRealtime(),
-            now,
-            pastHours = 1
-        )
+        val currentHour = now / ForecastDetailData.HOUR
+        return dailyForecastRowsForDetail(now).filter { it.time / ForecastDetailData.HOUR >= currentHour - 1 }
     }
-    /** Daily pages keep yesterday and all of today; the 48-hour entry still keeps only one past hour. */
-    private fun dailyForecastRowsForDetail(): List<ForecastHour> {
-        val now = System.currentTimeMillis()
-        val metrics = MetricHistoryTimelineCache.load(requireContext(), page, "caiyun_v26")
-        val weather = CaiyunWeatherHistorySnapshotCache.load(requireContext(), page)?.hourly.orEmpty()
-        val historical = (metrics?.points.orEmpty() + yesterdayMetricPoints).associateBy { it.timeMillis / ForecastDetailData.HOUR }
-        val points = weather.map { row ->
-            (historical[row.timeMillis / ForecastDetailData.HOUR] ?: HourlyMetricPoint(row.timeMillis)).let { metric ->
-                metric.copy(temperature=metric.temperature ?: row.temperature, uv=metric.uv ?: row.uv,
-                    precipitationProbability=metric.precipitationProbability ?: row.precipitationProbability)
-            }
-        } + historical.values + hourlyMetricPoints
-        val rows = ForecastDetailData.build(points.associateBy { it.timeMillis / ForecastDetailData.HOUR }.values.toList(),
-            weather.associate { it.timeMillis / ForecastDetailData.HOUR to it.skycon } + forecastSkyByHour,
-            metrics?.airQualityPoints.orEmpty() + historicalAirQualityPoints + airQualityTimeline.pointsWithRealtime(), now, pastHours=48)
-        return ForecastDayHistoryPolicy.merge(ForecastDayHistoryCache.load(requireContext(),page), rows, now)
+
+    /** Use one source-scoped timeline and merge fields rather than replacing partial hours. */
+    private fun dailyForecastRowsForDetail(now: Long = System.currentTimeMillis()): List<ForecastHour> {
+        val context = requireContext()
+        val useCaiyunHistory = WeatherSettings.dataSource(context) == WeatherSettings.SOURCE_CAIYUN
+        val metrics = if (useCaiyunHistory) MetricHistoryTimelineCache.load(context, page, "caiyun_v26") else null
+        val weather = if (useCaiyunHistory) CaiyunWeatherHistorySnapshotCache.load(context, page)?.hourly.orEmpty()
+            else emptyList()
+        val cached = ForecastDayHistoryCache.load(context, page, now)
+        val previous = weather.map {
+            ForecastHour(it.timeMillis, it.skycon, it.temperature, null, null, it.uv, null, null,
+                precipitationProbability = it.precipitationProbability)
+        }
+        val history = ForecastDetailData.build(
+            mergeMetricPoints(yesterdayMetricPoints, metrics?.points.orEmpty(), includeMissingHours = true), emptyMap(),
+            metrics?.airQualityPoints.orEmpty() + historicalAirQualityPoints, now, pastHours = 48
+        )
+        val current = ForecastDetailData.build(
+            hourlyMetricPoints, forecastSkyByHour,
+            historicalAirQualityPoints + airQualityTimeline.pointsWithRealtime(), now, pastHours = 48
+        )
+        return ForecastDayHistoryPolicy.merge(cached, previous + history + current, now)
     }
 
     private var yesterdayMetricPoints: List<HourlyMetricPoint> = emptyList()
@@ -383,8 +355,6 @@ class WeatherFragment : Fragment() {
     private var maskShotBmp: Bitmap? = null
     private var maskShotW = 0
     private var maskShotH = 0
-    // 宿主注册的"覆盖层内容"（如预览页顶部胶囊按钮）：截图时隐藏，避免被蒙版模糊成双重影像
-    private val overlayViews = mutableListOf<View>()
     // 预览页外部按钮应保持其自身 15% 白色填充，不能被首页普通天气卡片样式覆盖。
     private val externalContentMasks = mutableSetOf<BlurCardView>()
     // 三张需要非线性入场的指示条各自记录可见状态。卡片从滚动区域外重新进入时才
@@ -493,6 +463,7 @@ class WeatherFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        weatherBoundToView = false
         renderedDisplaySettings=null
         val args = arguments
         page = CityPage(
@@ -637,7 +608,9 @@ class WeatherFragment : Fragment() {
 
         // 右上角三个点：进入天气设置二级菜单
         btnSettings.setOnClickListener {
-            weatherSettingsLauncher.launch(Intent(requireContext(), WeatherSettingsActivity::class.java))
+            val home = activity as? MainActivity
+            if (home != null) home.openWeatherSettings()
+            else startActivity(Intent(requireContext(), WeatherSettingsActivity::class.java))
         }
 
         // 当前定位页：直接显示详细地址；其他城市名统一补全“市”字
@@ -697,7 +670,12 @@ class WeatherFragment : Fragment() {
             it.pullProgressListener = { p -> onPullProgress(p) }
             it.contentSettledListener = { if (isAdded) alignBottom() }
         }
-        refreshLayout.setOnRefreshListener { refreshAll() }
+        refreshLayout.setOnRefreshListener {
+            if (isCurrentPage() && !page.isCurrentLocation) {
+                (activity as? MainActivity)?.requestHomeLocation(userRefresh = true)
+            }
+            refreshAll()
+        }
 
         // 顶部模糊蒙版 + 三张信息卡片：每帧截取背后的画面做 GPU 模糊（BlurLayout 方式）
         // 顶部蒙版：接近无色透明的模糊（中性深色、低透明度）
@@ -726,25 +704,16 @@ class WeatherFragment : Fragment() {
 
         // 页面滚动时毛玻璃必须跟手：滚动中提升到 60fps 截图；
         // 同时按滚动距离渐显顶部蒙版和分割线
-        val weatherScroll = requireView().findViewById<ScrollView>(R.id.weatherRoot)
+        val weatherScroll = requireView().findViewById<ElasticWeatherScrollView>(R.id.weatherRoot)
+        weatherScroll.springAtTop = false
         weatherScroll
-            .setOnScrollChangeListener { _, _, _, _, scrollY ->
+            .setOnScrollChangeListener { _, _, scrollY, _, _ ->
                 lastWeatherScrollY = scrollY
                 setFastGlass(true)
                 // 回到顶部时重新校正弹性空白（此时测量不含滚动偏移）
                 if (scrollY == 0) alignBottom()
-                // 实时温度文字块（温度/描述/最高最低）还远离蒙版下缘时蒙版就完全就位，
-                // 避免半透明渐显过程与温度文字重叠。
-                // 直接用“温度文字顶端与蒙版下缘的几何距离”计算渐显进度，
-                // 不再叠加状态栏高度/固定 150dp 等常量，避免预览页因布局差异而失效。
-                // 蒙版下缘用“实时屏幕几何”计算：每次滚动都重新读取当前高度与位置，
-                // 状态栏/蒙版高度中途变化时下一帧自动校正，避免预览页偶发失效。
-                val chromeBottom = topMask.bottom.takeIf { it > 0 }
-                    ?: topOverlayContent.height.takeIf { it > 0 }
-                    ?: (statusBarHeight + dp(60f))
-                val reveal = TopChromeScrollPolicy.revealProgress(
-                    scrollY, tvTemp.top, chromeBottom + dp(16f), dp(64f)
-                )
+                val chromeStart = (tvTemp.top - topMask.bottom).coerceIn(0, dp(12f))
+                val reveal = TopChromeScrollPolicy.revealProgress(scrollY, chromeStart, dp(105f))
                 if(topMask.alpha<=0f && reveal>0f) lastMaskGlassFrameNanos=0L
                 topMask.alpha = reveal
                 val indicatorAlpha = 1f - reveal
@@ -776,11 +745,9 @@ class WeatherFragment : Fragment() {
 
         refreshIndicator()
         updateTopMaskSize()
-        alignBottom()
         appliedSource = WeatherSettings.dataSource(requireContext())
         appliedApiRevision = UserApiConfiguration.revision(requireContext())
-        // 先呈现不超过一天的上次成功数据；网络结果回来后再无感覆盖，避免弱网冷启动白屏。
-        restoreCachedWeather()
+        restoreCachedWeather(view)
         if (previewMode || activity !is MainActivity) {
             // 预览页不在主页的城市队列中，必须在创建后立即获取数据。
             fetchWeather(page.lng, page.lat)
@@ -828,18 +795,15 @@ class WeatherFragment : Fragment() {
         // 当前定位页：同时请求最新定位，拿到后原地更新地址并用新坐标再刷一次天气
         if (page.isCurrentLocation) {
             startRefreshTask {
-                (activity as? MainActivity)?.requestLocationRefresh { ok, lng, lat, detail ->
-                    if (!isAdded) {
-                        finishRefreshTask(ok)
-                        return@requestLocationRefresh
-                    }
-                    if (ok && (lng != page.lng || lat != page.lat)) {
-                        page = page.copy(lng = lng, lat = lat, locationDetail = detail)
+                (activity as? MainActivity)?.requestLocationRefresh { updated ->
+                    if (isAdded && updated != null) {
+                        val moved = updated.lng != page.lng || updated.lat != page.lat
+                        page = updated
                         tvCity.text = cityDisplayName()
                         updateTopMaskSize()
-                        startRefreshTask { fetchWeather(page.lng, page.lat, fromRefresh = true) }
+                        if (moved) startRefreshTask { fetchWeather(page.lng, page.lat, fromRefresh = true) }
                     }
-                    finishRefreshTask(ok)
+                    finishRefreshTask(updated != null)
                 }
             }
         }
@@ -886,27 +850,15 @@ class WeatherFragment : Fragment() {
         callback?.invoke()
     }
 
-    // 每次进入天气主页时由 MainActivity 调用：刷新本页天气；
-    // showIndicator=true 时走完整下拉刷新流程（刷新提示 + 云朵动画，供当前可见页使用），
-    // 其余城市页静默刷新。定位页同时请求最新定位，位置变化时原地更新地址并用新坐标重刷。
-    fun refreshOnEntry(
-        showIndicator: Boolean = false,
-        onFinished: (() -> Unit)? = null
-    ) {
+    // 打开主页时静默刷新，保留现有天气和布局；下拉刷新仍由手势触发。
+    fun refreshOnEntry(onFinished: (() -> Unit)? = null) {
         if (!isAdded) {
             onFinished?.invoke()
             return
         }
         Log.i("WeatherApp", "entry refresh started")
-        if (showIndicator && isAtInitialViewport()) {
-            refreshAll(onFinished)
-            return
-        }
         refreshSilently(onFinished)
     }
-
-    private fun isAtInitialViewport(): Boolean =
-        view?.findViewById<ScrollView>(R.id.weatherRoot)?.scrollY == 0
 
     // 城市切换完成后立即检查本城市的新鲜度；90 秒内已成功刷新则复用，避免连续横滑重复联网。
     private fun refreshWhenPageVisible() {
@@ -937,19 +889,20 @@ class WeatherFragment : Fragment() {
         mainHandler.postDelayed(timeoutRunnable, WeatherRefreshPolicy.SILENT_CITY_TIMEOUT_MS)
         fetchWeather(page.lng, page.lat, onComplete = taskFinished)
         if (page.isCurrentLocation) {
-            (activity as? MainActivity)?.requestLocationRefresh { ok, lng, lat, detail ->
-                if (!isAdded) { taskFinished(false); return@requestLocationRefresh }
-                if (ok) {
-                    val moved = lng != page.lng || lat != page.lat
-                    page = page.copy(lng = lng, lat = lat, locationDetail = detail)
-                    tvCity.text = cityDisplayName()
-                    updateTopMaskSize()
-                    if (moved) {
-                        fetchWeather(lng, lat, onComplete = taskFinished)
-                        return@requestLocationRefresh
-                    }
+            (activity as? MainActivity)?.requestLocationRefresh { updated ->
+                if (!isAdded || updated == null) {
+                    taskFinished(false)
+                    return@requestLocationRefresh
                 }
-                taskFinished(ok)
+                val moved = updated.lng != page.lng || updated.lat != page.lat
+                page = updated
+                tvCity.text = cityDisplayName()
+                updateTopMaskSize()
+                if (moved) {
+                    fetchWeather(updated.lng, updated.lat, onComplete = taskFinished)
+                } else {
+                    taskFinished(true)
+                }
             }
         }
     }
@@ -1023,11 +976,18 @@ class WeatherFragment : Fragment() {
         // 预览页没有外层 ViewPager 避让导航栏，这里自己补底部 insets，
         // 保证与默认天气页一样默认完整展示 48 小时卡片
         val bottom = if (previewMode) sb.bottom else 0
-        if (refreshLayout.paddingTop != sb.top || refreshLayout.paddingBottom != bottom ||
+        if (refreshLayout.paddingTop != 0 || refreshLayout.paddingBottom != bottom ||
             refreshLayout.paddingLeft != sb.left || refreshLayout.paddingRight != sb.right
         ) {
-            animateWeatherLayoutChange()
-            refreshLayout.setPadding(sb.left, sb.top, sb.right, bottom)
+            refreshLayout.setPadding(sb.left, 0, sb.right, bottom)
+        }
+        // Apply the initial inset to the moving content. The viewport stays edge to edge,
+        // so content can pass under the toolbar instead of being clipped at the status bar.
+        val scrollBody = view?.findViewById<ScrollView>(R.id.weatherRoot)?.getChildAt(0)
+        val bodyTop = dp(150f) + sb.top
+        if (scrollBody != null && scrollBody.paddingTop != bodyTop) {
+            scrollBody.setPaddingRelative(scrollBody.paddingStart, bodyTop, scrollBody.paddingEnd,
+                scrollBody.paddingBottom)
         }
         // 地址栏上移：去掉刷新提示占位后，只保留极小的状态栏间距
         topOverlayContent.setPadding(dp(20f), sb.top + dp(2f), dp(20f), dp(8f))
@@ -1058,72 +1018,50 @@ class WeatherFragment : Fragment() {
 
     // 计算顶部蒙版高度：城市文字行底部保持完整模糊，之后逐步退为清晰背景。
     private fun updateTopMaskSize() {
-        val v = view ?: return
+        val pageRoot = view ?: return
         if (!::locationBar.isInitialized) return
-        v.post {
-            if (!isAdded) return@post
-            if (previewMode) {
-                // 预览页隐藏了主页的位置栏，不能再从被隐藏的城市文字测量高度。
-                // 使用与主页“状态栏 + 城市行 + 6dp 起始 + 44dp 渐隐 + 8dp 清除”相同的几何，
-                // 让全宽实时模糊蒙版保持同样尺寸和渐变过渡。
-                val fadeStart = statusBarHeight + dp(38f) + dp(6f)
-                val clearInset = dp(8f)
-                val h = fadeStart + dp(44f) + clearInset
-                topMask.layoutParams = FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    h
-                ).apply {
-                    gravity = Gravity.TOP
-                }
-                topMask.setVerticalFadeRange(fadeStart.toFloat(), clearInset.toFloat())
-                updateRefreshTipPosition()
-                return@post
-            }
-            // 使用屏幕坐标避免因嵌套 LinearLayout 的局部坐标造成固定排版跳变。
-            // 城市名文字行下方 6dp 为 100% 模糊，随后向下 44dp 渐变，
-            // 在蒙版底端前 8dp 已降为清晰。
-            val cityPosition = IntArray(2)
-            val maskPosition = IntArray(2)
-            tvCity.getLocationOnScreen(cityPosition)
-            topMask.getLocationOnScreen(maskPosition)
-            val cityRowBottom = (cityPosition[1] - maskPosition[1] + tvCity.height)
-                .coerceAtLeast(dp(40f))
-            if (isCurrentPage()) {
-                // 背景与页面同处于 edge-to-edge 坐标系，直接使用城市文字的屏幕下沿。
-                (activity as? WeatherUiHost)?.hostBackgroundCloudSafeTop(
+        pageRoot.post {
+            if (!isAdded || view !== pageRoot) return@post
+            val titleBottom = if (previewMode) {
+                (activity as? WeatherUiHost)?.hostTopMaskBottom()?.takeIf { it > 0 }
+                    ?: (statusBarHeight + dp(42f))
+            } else {
+                val cityPosition = IntArray(2)
+                val maskPosition = IntArray(2)
+                tvCity.getLocationOnScreen(cityPosition)
+                topMask.getLocationOnScreen(maskPosition)
+                if (isCurrentPage()) (activity as? WeatherUiHost)?.hostBackgroundCloudSafeTop(
                     cityPosition[1] + tvCity.height + dp(12f)
                 )
+                (cityPosition[1] - maskPosition[1] + tvCity.height).coerceAtLeast(statusBarHeight + dp(32f))
             }
-            val fadeStart = cityRowBottom + dp(6f)
-            val clearInset = dp(8f)
-            val h = maxOf(
-                topOverlayContent.height + clearInset,
-                fadeStart + dp(44f) + clearInset,
-                dp(40f)
-            )
-            topMask.layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                h
-            ).apply {
-                gravity = Gravity.TOP
+            val maskHeight = maxOf(titleBottom, topOverlayContent.height) + dp(70f)
+            val params = topMask.layoutParams
+            if (params.height != maskHeight) {
+                params.height = maskHeight
+                topMask.layoutParams = params
             }
-            topMask.setVerticalFadeRange(fadeStart.toFloat(), clearInset.toFloat())
-            // 内容尚未测量时，等下一次布局后重新计算
-            if (topOverlayContent.height == 0) {
-                if (isAdded) v.post { updateTopMaskSize() }
-            } else {
-                updateRefreshTipPosition()
-            }
+            topMask.setVerticalFadeRange((titleBottom - dp(4f)).toFloat())
+            updateRefreshTipPosition()
         }
     }
 
-    // Align the first forecast card before revealing the laid-out weather content.
     private fun alignBottom() {
         val root = view ?: return
-        root.post { alignHourlyCard(root) }
+        if (startupFrame?.isCompleted == false || pendingHomeAlignment != null || homeCardAppearance.isPending) return
+        val listener = object : ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                root.viewTreeObserver.removeOnPreDrawListener(this)
+                pendingHomeAlignment = null
+                return homeCardAppearance.isPending || !alignHourlyCard(root)
+            }
+        }
+        pendingHomeAlignment = listener
+        root.viewTreeObserver.addOnPreDrawListener(listener)
+        root.invalidate()
     }
 
-    private fun alignHourlyCard(root: View, firstDraw: Boolean = false): Boolean {
+    private fun alignHourlyCard(root: View): Boolean {
         if (!isAdded || view !== root) return false
         if ((refreshLayout as? CloudSwipeRefreshLayout)?.isContentMotionActive() == true) return false
         val scroll = root.findViewById<View>(R.id.weatherRoot)
@@ -1138,11 +1076,8 @@ class WeatherFragment : Fragment() {
         val spare = location[1] + root.height - refreshLayout.paddingBottom - cardBottom
         val current = spacer.layoutParams.height
         val visualLift = if (previewMode) 0 else dp(13f)
-        val target = HourlyCardAlignmentPolicy.targetSpacerHeight(current, spare, visualLift) ?: return false
-        val now = System.currentTimeMillis()
-        if (kotlin.math.abs(target - current) <= 1 || (!firstDraw && now - lastSpacerSetAt < 250)) return false
-        if (!firstDraw) animateWeatherLayoutChange()
-        lastSpacerSetAt = now
+        val target = HourlyCardAlignmentPolicy.targetSpacerHeight(current, spare, visualLift) ?: 0
+        if (kotlin.math.abs(target - current) <= 1) return false
         spacer.layoutParams = LinearLayout.LayoutParams(dp(1f), target)
         return true
     }
@@ -1151,7 +1086,6 @@ class WeatherFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         if (lastSkycon != null) applyBackground()
-        playHomeEntrance()
         refreshIndicator()
         if (!::weatherLoadingOverlay.isInitialized || !weatherLoadingOverlay.isLoading()) {
             startGlassLoop()
@@ -1189,7 +1123,8 @@ class WeatherFragment : Fragment() {
 
     override fun onPause() {
         super.onPause()
-        finishHomeEntrance()
+        homeWeatherCrossfade.finish()
+        homeCardAppearance.finish()
         view?.findViewById<ScrollView>(R.id.weatherRoot)?.let { lastWeatherScrollY = it.scrollY }
         mainHandler.removeCallbacks(countdownRunnable)
         // 切走/滑走时不白跑模糊，省电
@@ -1198,7 +1133,14 @@ class WeatherFragment : Fragment() {
     }
 
     override fun onDestroyView() {
-        finishHomeEntrance()
+        startupFrame?.cancel()
+        startupFrame = null
+        pendingHomeAlignment?.let { listener ->
+            view?.viewTreeObserver?.takeIf { it.isAlive }?.removeOnPreDrawListener(listener)
+        }
+        pendingHomeAlignment = null
+        homeWeatherCrossfade.finish()
+        homeCardAppearance.finish()
         super.onDestroyView()
         stopGlassLoop()
         moreAnimator?.cancel()
@@ -1211,7 +1153,7 @@ class WeatherFragment : Fragment() {
         // ViewPager may currently be dispatching a page callback; defer removal until
         // that traversal ends, while pairing each view's registration with destruction.
         oldPager?.post {oldPager.unregisterOnPageChangeCallback(pageCallback)}
-        glassCards.clear();externalContentMasks.clear();overlayViews.clear()
+        glassCards.clear();externalContentMasks.clear()
         renderedDisplaySettings=null
     }
 
@@ -1280,11 +1222,6 @@ class WeatherFragment : Fragment() {
         externalContentMasks.add(card)
     }
 
-    // 外部覆盖层内容（如预览页顶部按钮）：截图时一并隐藏，避免出现在蒙版模糊里
-    fun addExternalOverlayView(v: View) {
-        overlayViews.add(v)
-    }
-
     private fun stopGlassLoop() {
         glassIdleReset?.let {glassHandler.removeCallbacks(it)}
         glassIdleReset=null;fastGlass=false
@@ -1310,18 +1247,8 @@ class WeatherFragment : Fragment() {
         }
         val masks = glassCards.filter { it.blursContentInsteadOfBackground }
 
-        if (useGpuBlur) {
-            // 背景截图：只保留共享天气背景 → 给普通卡片。
-            // 不再把卡片/文字一起截进源图，滚动时不会出现旧帧叠在云朵上的拖影或闪白。
-            captureGlass(root, rootLoc, loc, normal, hideCards = true)
-            // 内容截图：只隐藏蒙版自身和覆盖层文字，保留全部卡片内容 → 给顶部蒙版，
-            // 使所有卡片与实时文字统一处于同一平面，滑到蒙版下方时被实时模糊
-            if (includeContentMasks) captureGlass(root, rootLoc, loc, masks, hideCards = false)
-            return
-        }
-
-        // API 31 以下 CPU 路径：保持单次背景截图（旧设备蒙版也复用同一背景源）
-        captureGlass(root, rootLoc, loc, glassCards, hideCards = true)
+        captureGlass(root, rootLoc, loc, normal, hideCards = true)
+        if (includeContentMasks) captureGlass(root, rootLoc, loc, masks, hideCards = false)
     }
 
     /**
@@ -1408,10 +1335,11 @@ class WeatherFragment : Fragment() {
         }
         if (!any) return
 
-        val sw = ((maxR - minL) * SHOT_QUALITY).toInt().coerceAtLeast(1)
-        val sh = ((maxB - minT) * SHOT_QUALITY).toInt().coerceAtLeast(1)
+        val quality = if (!hideCards && !useGpuBlur) .16f else SHOT_QUALITY
+        val sw = ((maxR - minL) * quality).toInt().coerceAtLeast(1)
+        val sh = ((maxB - minT) * quality).toInt().coerceAtLeast(1)
 
-        if (useGpuBlur) {
+        if (useGpuBlur || !hideCards) {
             val cached = if (hideCards) shotBmp else maskShotBmp
             val cw = if (hideCards) shotW else maskShotW
             val chh = if (hideCards) shotH else maskShotH
@@ -1433,32 +1361,32 @@ class WeatherFragment : Fragment() {
 
             val canvas = Canvas(bitmap)
             canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-            canvas.scale(SHOT_QUALITY, SHOT_QUALITY)
+            canvas.scale(quality, quality)
             canvas.translate(-minL.toFloat(), -minT.toFloat())
-            if (hideCards) {
-                WeatherBackgroundSnapshot.draw(root, canvas)
-            } else {
-                val excluded = (listOf(topMask, topOverlayContent) + overlayViews + cards).distinct()
-                val saved = excluded.map { it to it.visibility }
-                try {
-                    excluded.forEach { it.visibility = View.INVISIBLE }
-                    root.draw(canvas)
-                } finally {
-                    saved.forEach { (v, visibility) -> v.visibility = visibility }
-                }
+            WeatherBackgroundSnapshot.draw(root, canvas)
+            if (!hideCards) {
+                refreshLayout.getLocationInWindow(loc)
+                val layer = canvas.save()
+                canvas.translate((loc[0] - rootLoc[0]).toFloat(), (loc[1] - rootLoc[1]).toFloat())
+                canvas.clipRect(0, 0, refreshLayout.width, refreshLayout.height)
+                drawForChromeSample { refreshLayout.draw(canvas) }
+                canvas.restoreToCount(layer)
             }
 
             for (i in visible.indices) {
                 val r = regions[i]
-                visible[i].setLiveSource(
-                    bitmap,
-                    Rect(
-                        ((r.left - minL) * SHOT_QUALITY).toInt().coerceAtLeast(0),
-                        ((r.top - minT) * SHOT_QUALITY).toInt().coerceAtLeast(0),
-                        ((r.right - minL) * SHOT_QUALITY).toInt().coerceAtMost(sw),
-                        ((r.bottom - minT) * SHOT_QUALITY).toInt().coerceAtMost(sh)
-                    )
+                val region = Rect(
+                    ((r.left - minL) * quality).toInt().coerceAtLeast(0),
+                    ((r.top - minT) * quality).toInt().coerceAtLeast(0),
+                    ((r.right - minL) * quality).toInt().coerceAtMost(sw),
+                    ((r.bottom - minT) * quality).toInt().coerceAtMost(sh)
                 )
+                val card = visible[i]
+                if (useGpuBlur) card.setLiveSource(bitmap, region)
+                else {
+                    card.blurInBackground(bitmap, region)
+                    card.commitBlur()
+                }
             }
             return
         }
@@ -1478,7 +1406,7 @@ class WeatherFragment : Fragment() {
 
         val canvas = Canvas(board)
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-        canvas.scale(SHOT_QUALITY, SHOT_QUALITY)
+        canvas.scale(quality, quality)
         canvas.translate(-minL.toFloat(), -minT.toFloat())
         WeatherBackgroundSnapshot.draw(root, canvas)
 
@@ -1486,10 +1414,10 @@ class WeatherFragment : Fragment() {
         for (i in visible.indices) {
             val r = regions[i]
             regions[i] = Rect(
-                ((r.left - minL) * SHOT_QUALITY).toInt().coerceAtLeast(0),
-                ((r.top - minT) * SHOT_QUALITY).toInt().coerceAtLeast(0),
-                ((r.right - minL) * SHOT_QUALITY).toInt().coerceAtMost(sw),
-                ((r.bottom - minT) * SHOT_QUALITY).toInt().coerceAtMost(sh)
+                ((r.left - minL) * quality).toInt().coerceAtLeast(0),
+                ((r.top - minT) * quality).toInt().coerceAtLeast(0),
+                ((r.right - minL) * quality).toInt().coerceAtMost(sw),
+                ((r.bottom - minT) * quality).toInt().coerceAtMost(sh)
             )
         }
 
@@ -1687,6 +1615,7 @@ class WeatherFragment : Fragment() {
     }
 
     private fun resetSourceState() {
+        weatherBoundToView = false
         ++fetchSeq;++metricHistoryFetchSeq;++metricFetchSeq;++alertRequestVersion;++calibrationFetchSeq
         lastServerTimeMillis=0;lastPageRefreshAt=0
         lastTemp=null;lastHigh=null;lastLow=null;lastFeelsLike=null;lastSkycon=null
@@ -1712,54 +1641,86 @@ class WeatherFragment : Fragment() {
         updateDetailCards();renderAqiCard(null);renderLifeAdvice()
     }
 
-    private fun restoreCachedWeather() {
+    private fun restoreCachedWeather(root: View) {
         val context = context?.applicationContext ?: return
-        val sourceKey = WeatherSettings.sourceKey(context)
-        val city = page.copy()
-        viewLifecycleOwner.lifecycleScope.launch {
-            val (caiyun, qweather) = withContext(Dispatchers.IO) {
-                WeatherCache.loadCaiyunStartup(context, city) to WeatherCache.loadQWeatherStartup(context, city)
+        val scope = WeatherCache.homeScope(context)
+        val frame = CompletableDeferred<Unit>()
+        startupFrame = frame
+        var waitingForCache = true
+        var aligned = false
+        val host = activity as? MainActivity
+        root.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                if (view !== root) {
+                    root.viewTreeObserver.removeOnPreDrawListener(this)
+                    frame.cancel()
+                    return true
+                }
+                if (waitingForCache) return !isCurrentPage()
+                if (!aligned && weatherBoundToView && alignHourlyCard(root)) {
+                    aligned = true
+                    return false
+                }
+                root.viewTreeObserver.removeOnPreDrawListener(this)
+                if (isCurrentPage()) host?.onHomeContentReadyForDraw()
+                // The cached layout is drawn in this traversal before networking can replace it.
+                root.postOnAnimation { frame.complete(Unit) }
+                return true
             }
-            if (hasRenderableWeatherData() || !matchesPage(city) || sourceKey != WeatherSettings.sourceKey(context)) return@launch
-            applyStartupSnapshot(context, caiyun, qweather)
+        })
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                do {
+                    val city = page.copy()
+                    val snapshot = withContext(Dispatchers.IO) {
+                        runCatching { WeatherCache.loadHomeStartup(context, city) }
+                            .getOrDefault(WeatherCache.HomeStartup())
+                    }
+                    if (scope != WeatherCache.homeScope(context)) break
+                    if (matchesPage(city)) {
+                        if (!weatherBoundToView) {
+                            applyStartupSnapshot(snapshot)
+                            if (isCurrentPage()) WeatherDiagnostics.event(context, "天气",
+                                if (weatherBoundToView) "恢复首页缓存" else "首页无可展示缓存")
+                        }
+                        break
+                    }
+                } while (view === root)
+            } finally {
+                waitingForCache = false
+                root.invalidate()
+            }
         }
     }
 
-    private fun applyStartupSnapshot(
-        context: Context,
-        caiyunStartup: WeatherCache.StartupSnapshot<CaiyunResponse>?,
-        qweatherStartup: WeatherCache.StartupSnapshot<QWeatherBundle>?
-    ) {
-        val freshCaiyun=caiyunStartup?.fresh
-        val cached = if (WeatherSettings.useQWeather(context)) null else
-            freshCaiyun?.takeIf { it.result?.realtime != null } ?: caiyunStartup?.display
-        if (cached != null) {
-            appliedSource = WeatherSettings.dataSource(context)
-            cached.serverTime?.let { lastServerTimeMillis = it * 1000L }
-            showWeather(cached.result)
+    private fun applyStartupSnapshot(snapshot: WeatherCache.HomeStartup) {
+        val freshCaiyun = snapshot.caiyun?.fresh
+        val cached = freshCaiyun?.takeIf { it.result?.realtime != null } ?: snapshot.caiyun?.display
+        if (cached?.result != null) {
             displayingOldSnapshot = freshCaiyun?.result?.realtime == null
-            if (displayingOldSnapshot) {
-                tvDesc.append(" · 上次天气")
-                setStatusError("正在更新")
+            cached.serverTime?.let { lastServerTimeMillis = it * 1000L }
+            showWeather(cached.result, fromStartup = true)
+            applyQAlerts(snapshot.alerts)
+        } else {
+            val qweather = snapshot.qweather ?: return
+            val fallback = qweather.fresh?.takeIf { it.now != null } ?: qweather.display
+            displayingOldSnapshot = qweather.fresh?.now == null
+            lastServerTimeMillis = fallback.updateTimeMillis
+            if (fallback.now != null) {
+                showQWeather(
+                    if (displayingOldSnapshot) fallback.copy(minutely = emptyList(), minutelySummary = null) else fallback,
+                    loadSupplementalDaily = false
+                )
+            } else {
+                showCachedQWeatherForecast(fallback)
             }
-            Log.i("WeatherApp", "Restored weather display snapshot")
-            renderedDisplaySettings=displaySettingsKey()
-            return
         }
-        // 只有彩云整包失败后写入的和风降级快照才会走到这里；它不作为可选源呈现。
-        val freshQWeather=qweatherStartup?.fresh
-        val fallback = freshQWeather?.takeIf { it.now != null }
-            ?: qweatherStartup?.display
-            ?: freshQWeather
-            ?: return
-        appliedSource = WeatherSettings.SOURCE_QWEATHER
-        lastServerTimeMillis = fallback.updateTimeMillis
-        if (fallback.now != null) showQWeather(fallback, loadSupplementalDaily = false)
-        else showCachedQWeatherForecast(fallback)
-        displayingOldSnapshot = !WeatherCachePolicy.volatileUsable(
-            WeatherCachePolicy.observationAge(System.currentTimeMillis(), 0, fallback.now?.obsTimeMillis ?: fallback.updateTimeMillis))
-        if (displayingOldSnapshot) { tvDesc.append(" · 上次天气"); setStatusError("正在更新") }
-        if(fallback.now!=null || fallback.daily.isNotEmpty()) renderedDisplaySettings=displaySettingsKey()
+        if (displayingOldSnapshot) {
+            tvDesc.append(" · 上次天气")
+            setStatusError("正在更新")
+        }
+        Log.i("WeatherApp", "Restored weather display snapshot")
+        renderedDisplaySettings = displaySettingsKey()
     }
 
     /**
@@ -1769,18 +1730,22 @@ class WeatherFragment : Fragment() {
     private fun showCachedQWeatherForecast(bundle: QWeatherBundle) {
         val days = bundle.daily
         if (days.isEmpty()) return
+        weatherBoundToView = true
         primaryDaily = days.map {
             DailyForecast(
                 date = it.date.take(10), skycon = it.skycon,
                 high = it.high?.let { value -> Math.round(value).toInt() },
                 low = it.low?.let { value -> Math.round(value).toInt() },
-                precipProb = it.precipProb?.toInt()
+                precipProb = it.precipProb?.toInt(),
+                highCelsius = it.high,
+                lowCelsius = it.low
             )
         }
         dailySource = mergedDaily()
         dailySource?.let(::renderDaily)
         val todayKey = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(System.currentTimeMillis())
-        val today = days.firstOrNull { it.date.take(10) == todayKey } ?: days.firstOrNull()
+        val today = days.firstOrNull { it.date.take(10) == todayKey }
+        showHighLow(today?.high, today?.low)
         today?.sunrise?.let { parseAstroTime(today.date, it) }?.let { sunriseMillis = it; tvSunrise.text = formatClock(it) }
         today?.sunset?.let { parseAstroTime(today.date, it) }?.let { sunsetMillis = it; tvSunset.text = formatClock(it) }
         if (sunriseMillis > 0L || sunsetMillis > 0L) updateSunCard()
@@ -1788,12 +1753,63 @@ class WeatherFragment : Fragment() {
         showDataSourceFooter()
     }
 
+    private fun persistWeatherBeforeDisplay(
+        sequence: Int,
+        save: (Context, CityPage) -> Unit,
+        onDiscard: () -> Unit = {},
+        display: () -> Unit
+    ) {
+        val root = view ?: run {
+            onDiscard()
+            return
+        }
+        val context = requireContext().applicationContext
+        val city = page.copy()
+        val scope = WeatherCache.homeScope(context)
+        viewLifecycleOwner.lifecycleScope.launch {
+            withContext(WeatherCache.homePersistenceDispatcher) {
+                if (scope == WeatherCache.homeScope(context)) {
+                    runCatching { save(context, city) }.onFailure {
+                        Log.w("WeatherApp", "Weather snapshot persistence failed", it)
+                    }
+                }
+            }
+            if (view === root && sequence == fetchSeq && matchesPage(city) &&
+                scope == WeatherCache.homeScope(context)
+            ) {
+                display()
+            } else {
+                onDiscard()
+            }
+        }
+    }
+
+    private fun persistFreeWeather(body: CaiyunResponse) {
+        val city = page.copy()
+        val cacheOnHome = !previewMode
+        WeatherCache.persistHomeUpdates(requireContext()) { app ->
+            WeatherCache.saveCaiyun(app, city, body, fromHome = cacheOnHome)
+        }
+    }
+
+    private fun matchesRequestedCoordinates(lng: Double, lat: Double): Boolean =
+        lng == page.lng && lat == page.lat
+
     private fun fetchWeather(
         lng: Double,
         lat: Double,
         fromRefresh: Boolean = false,
         onComplete: ((Boolean) -> Unit)? = null
     ) {
+        val frame = startupFrame
+        if (frame != null && !frame.isCompleted) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                frame.await()
+                if (matchesRequestedCoordinates(lng, lat)) fetchWeather(lng, lat, fromRefresh, onComplete)
+                else completeDataLoad(fromRefresh, onComplete, false)
+            }
+            return
+        }
         if (BuildConfig.USER_CONFIGURABLE) {
             if(appliedSource!=WeatherSettings.dataSource(requireContext()) || appliedApiRevision!=UserApiConfiguration.revision(requireContext())) {
                 resetSourceState();appliedSource=WeatherSettings.dataSource(requireContext())
@@ -1815,12 +1831,12 @@ class WeatherFragment : Fragment() {
         WeatherDataRepository.enqueueCaiyunWeather(requireContext(), lng, lat, 15, 360, onSupplement = { extra ->
             if (isAdded && view != null && seq == fetchSeq && sourceKey == WeatherSettings.sourceKey(requireContext()) && WeatherSettings.useOpenMeteo(requireContext())) {
                 extra.body?.let { body ->
-                    WeatherCache.saveCaiyun(requireContext(),page,body)
-                    body.result?.let { result -> applyOpenMeteoAir(result) }
+                    persistFreeWeather(body)
+                    body.result?.let(::applyOpenMeteoAir)
                 }
             }
         }) { response ->
-                    if (!isAdded) {
+                    if (!isAdded || view == null) {
                         completeDataLoad(fromRefresh, onComplete, false)
                         return@enqueueCaiyunWeather
                     }
@@ -1832,17 +1848,27 @@ class WeatherFragment : Fragment() {
                     val body = response.body
                     if (response.isSuccessful && body?.result?.realtime?.temperature?.isFinite() == true &&
                         WeatherRefreshPolicy.canCommitObservation(System.currentTimeMillis(), body.serverTime?.times(1000), lastServerTimeMillis)) {
-                        appliedSource = WeatherSettings.dataSource(requireContext())
-                        displayingOldSnapshot = false
-                        lastPageRefreshAt = System.currentTimeMillis()
-                        // 记录数据发布时间（秒 → 毫秒），刷新成功时显示"数据发布于 X 分钟前"
-                        body.serverTime?.let { lastServerTimeMillis = it * 1000L }
-                        if (fromRefresh) animateWeatherDataSwap()
-                        WeatherCache.saveCaiyun(requireContext(), page, body)
-                        showWeather(body.result)
-                        // 只在彩云已有数据成功后启动和风字段补齐，避免补充源抢先渲染主页面。
-                        if (!WeatherSettings.useOpenMeteo(requireContext())) fetchQWeatherSupplement(lng, lat, seq)
-                        completeDataLoad(fromRefresh, onComplete, true)
+                        val render = {
+                            appliedSource = WeatherSettings.dataSource(requireContext())
+                            displayingOldSnapshot = false
+                            lastPageRefreshAt = System.currentTimeMillis()
+                            // 记录数据发布时间（秒 → 毫秒），刷新成功时显示"数据发布于 X 分钟前"
+                            body.serverTime?.let { lastServerTimeMillis = it * 1000L }
+                            renderRefreshedWeather { showWeather(body.result) }
+                            // 只在彩云已有数据成功后启动和风字段补齐，避免补充源抢先渲染主页面。
+                            if (WeatherSettings.useQWeatherSupplement(requireContext()) ||
+                                !WeatherSettings.useOpenMeteo(requireContext())) fetchQWeatherSupplement(lng, lat, seq)
+                            completeDataLoad(fromRefresh, onComplete, true)
+                        }
+                        if (WeatherSettings.useOpenMeteo(requireContext())) {
+                            persistFreeWeather(body)
+                            render()
+                        } else {
+                            val cacheOnHome = !previewMode
+                            persistWeatherBeforeDisplay(seq, { context, city ->
+                                WeatherCache.saveCaiyun(context, city, body, fromHome = cacheOnHome)
+                            }, onDiscard = { completeDataLoad(fromRefresh, onComplete, false) }, display = render)
+                        }
                     } else {
                         setStatusError(if(WeatherSettings.useOpenMeteo(requireContext())) "Open-Meteo 暂不可用，请稍后重试" else "彩云请求失败，请检查接口配置与网络")
                         finishInitialLoading()
@@ -1856,6 +1882,8 @@ class WeatherFragment : Fragment() {
         val appContext = requireContext().applicationContext
         if (BuildConfig.USER_CONFIGURABLE && !UserApiConfiguration.read(appContext).hasQWeather()) return
         val sourceKey=WeatherSettings.sourceKey(appContext)
+        val city = page.copy(lat = lat, lng = lng)
+        val hybrid = WeatherSettings.useQWeatherSupplement(appContext)
         Thread {
             val advice = QWeatherApi.fetchLifeAdvice(appContext, lat, lng)
             activity?.runOnUiThread {
@@ -1864,14 +1892,19 @@ class WeatherFragment : Fragment() {
                     renderLifeAdvice()
                 }
             }
-            val bundle = runCatching { QWeatherApi.fetchAll(appContext, lat, lng) }.getOrNull()
+            val bundle = runCatching {
+                if (sourceKey != WeatherSettings.sourceKey(appContext)) return@Thread
+                if (hybrid) QWeatherSupplement.air(appContext, city)
+                else QWeatherApi.fetchAll(appContext, lat, lng)
+            }.getOrNull()
             val act = activity ?: return@Thread
             act.runOnUiThread {
                 if (!isAdded || seq != fetchSeq || sourceKey!=WeatherSettings.sourceKey(appContext) || bundle == null) return@runOnUiThread
                 val qAdvice = LifeAdviceFactory.fromQWeather(bundle.lifeAdvice)
                 if (qAdvice.isNotEmpty()) lifeAdvice = qAdvice
                 renderLifeAdvice()
-                if (airQualityTimeline.source == AirQualitySource.CAIYUN) {
+                if (hybrid) applyAirQualityTimeline(AirQualityTimelineFactory.qweather(bundle))
+                else if (airQualityTimeline.source == AirQualitySource.CAIYUN) {
                     applyAirQualityTimeline(
                         AirQualityTimelineFactory.mergeCaiyunWithQWeather(
                             airQualityTimeline, AirQualityTimelineFactory.qweather(bundle)
@@ -1901,7 +1934,7 @@ class WeatherFragment : Fragment() {
     }
 
     private fun sunDataSourceName(): String = when(WeatherSettings.dataSource(requireContext())) {
-        WeatherSettings.SOURCE_OPEN_METEO -> "Open-Meteo · 模型数据/本地计算"
+        WeatherSettings.SOURCE_OPEN_METEO, WeatherSettings.SOURCE_OPEN_METEO_QWEATHER -> "Open-Meteo · 模型数据/本地计算"
         WeatherSettings.SOURCE_QWEATHER -> "和风天气"
         else -> if (caiyunV26Astro.isNotEmpty()) "彩云天气 v2.6" else "彩云天气"
     }
@@ -1947,15 +1980,18 @@ class WeatherFragment : Fragment() {
                     completeDataLoad(fromRefresh, onComplete, false)
                     return@runOnUiThread
                 }
-                Log.i("WeatherApp", "QWeather observation committed")
-                appliedSource = WeatherSettings.SOURCE_QWEATHER
-                displayingOldSnapshot = false
-                lastPageRefreshAt = System.currentTimeMillis()
-                lastServerTimeMillis = bundle.updateTimeMillis
-                if (fromRefresh) animateWeatherDataSwap()
-                WeatherCache.saveQWeather(requireContext(), page, bundle)
-                showQWeather(bundle)
-                completeDataLoad(fromRefresh, onComplete, true)
+                val cacheOnHome = !previewMode
+                persistWeatherBeforeDisplay(seq, { context, city ->
+                    WeatherCache.saveQWeather(context, city, bundle, fromHome = cacheOnHome)
+                }, onDiscard = { completeDataLoad(fromRefresh, onComplete, false) }) {
+                    Log.i("WeatherApp", "QWeather observation committed")
+                    appliedSource = WeatherSettings.SOURCE_QWEATHER
+                    displayingOldSnapshot = false
+                    lastPageRefreshAt = System.currentTimeMillis()
+                    lastServerTimeMillis = bundle.updateTimeMillis
+                    renderRefreshedWeather { showQWeather(bundle) }
+                    completeDataLoad(fromRefresh, onComplete, true)
+                }
             }
         }.start()
     }
@@ -1965,6 +2001,7 @@ class WeatherFragment : Fragment() {
         loadSupplementalDaily: Boolean = true
     ) {
         val now = b.now ?: return
+        weatherBoundToView = true
         val c = requireContext()
         lastSkycon = now.skycon
         lastTemp = now.temp
@@ -2008,7 +2045,7 @@ class WeatherFragment : Fragment() {
             hourlyLabels = listOf(formatClock(currentHour)) + future.map { formatClock(it.timeMillis) }
             hourlyTemps = listOf(now.temp) + future.map { it.temp }
             hourlySkycons = listOf(now.skycon) + future.map { it.skycon }
-            hourlyProbs = listOf(currentForecast?.pop ?: 0.0) + future.map { it.pop }
+            hourlyProbs = listOf(currentForecast?.pop ?: 0.0) + future.map { it.pop ?: 0.0 }
             hourlyRefMillis = currentHour
             forecastSkyByHour = (listOf(currentHour / 3_600_000L to now.skycon) +
                 future.map { it.timeMillis / 3_600_000L to it.skycon }).toMap()
@@ -2017,7 +2054,10 @@ class WeatherFragment : Fragment() {
                     timeMillis = it.timeMillis,
                     temperature = it.temp,
                     feelsLike = it.feelsLike,
-                    precipitationProbability = it.pop,
+                    precipitationProbability = it.pop?.div(100.0),
+                    precipitationAmountMm = it.precipitationAmountMm,
+                    windDirectionDegrees = it.windDirectionDegrees,
+                    gustKmh = it.gustKmh,
                     uv = it.uvIndex,
                     windKmh = it.windSpeedKmh,
                     pressureHpa = it.pressureHpa,
@@ -2030,7 +2070,10 @@ class WeatherFragment : Fragment() {
                     timeMillis = it.timeMillis,
                     temperature = it.temp,
                     feelsLike = it.feelsLike,
-                    precipitationProbability = it.pop,
+                    precipitationProbability = it.pop?.div(100.0),
+                    precipitationAmountMm = it.precipitationAmountMm,
+                    windDirectionDegrees = it.windDirectionDegrees,
+                    gustKmh = it.gustKmh,
                     uv = it.uvIndex,
                     windKmh = it.windSpeedKmh,
                     pressureHpa = it.pressureHpa,
@@ -2045,13 +2088,8 @@ class WeatherFragment : Fragment() {
         val days = b.daily
         val todayKey2 =
             SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(System.currentTimeMillis())
-        val today = days.firstOrNull { it.date.take(10) == todayKey2 } ?: days.firstOrNull()
-        lastHigh = today?.high
-        lastLow = today?.low
-        if (today != null) {
-            tvHighLow.text =
-                "最高 ${WeatherSettings.tempText(c, today.high)}   最低 ${WeatherSettings.tempText(c, today.low)}"
-        }
+        val today = days.firstOrNull { it.date.take(10) == todayKey2 }
+        showHighLow(today?.high, today?.low)
         val ref = if (hourlyRefMillis != 0L) hourlyRefMillis else System.currentTimeMillis()
         val events = ArrayList<SunPoint>()
         for (d in days) {
@@ -2102,7 +2140,9 @@ class WeatherFragment : Fragment() {
                     skycon = it.skycon,
                     high = it.high?.let { v -> Math.round(v).toInt() },
                     low = it.low?.let { v -> Math.round(v).toInt() },
-                    precipProb = it.precipProb?.toInt()
+                    precipProb = it.precipProb?.toInt(),
+                    highCelsius = it.high,
+                    lowCelsius = it.low
                 )
             }
             dailySource = mergedDaily()
@@ -2116,35 +2156,8 @@ class WeatherFragment : Fragment() {
             b.minutelySummary,
             mmPerHourScale = 12.0 // 和风 minutely.precip 是 5 分钟累计 mm，×12 = mm/h
         )
-        // 灾害预警：和风 v1 预警接口，跳过取消/已过期预警，并按简化后的名称去重
-        clearAlerts()
-        val alertNow = System.currentTimeMillis()
-        val seenAlertNames = HashSet<String>()
-        for (a in b.alerts) {
-            if (a.messageType == "cancel" || a.expireTimeMillis <= alertNow) continue
-            if (AlertVisibilityPolicy.isAgriculturalAlert(
-                    a.eventTypeName, a.headline, a.senderName
-                )) continue
-            val name = alertShortName(a)
-            val nameKey = normalizeAlertKey(name)
-            if (nameKey.isEmpty() || !seenAlertNames.add(nameKey)) continue
-            val desc = buildString {
-                append(a.description.ifBlank { a.headline }.ifBlank { "暂无详细预警内容" })
-                if (a.instruction.isNotBlank()) {
-                    append("\n防御指南：").append(a.instruction)
-                }
-            }
-            alertTitles.add(name)
-            alertLevels.add(alertLevelName(a))
-            alertContents.add(desc)
-            alertTimes.add(formatAlertTime(a.issuedTimeMillis))
-            alertCodes.add(a.eventTypeCode)
-            alertLocations.add(WeatherAddressFormatter.label(page))
-            alertSources.add(a.senderName)
-            alertColors.add(alertColorOf(a))
-        }
-        refreshAlertEntry()
-        fetchPressureTrend()
+        applyQAlerts(b.alerts)
+        if (loadSupplementalDaily) fetchPressureTrend()
         showDataSourceFooter()
         finishInitialLoading()
     }
@@ -2175,11 +2188,8 @@ class WeatherFragment : Fragment() {
         val scaled = values.map { it * mmPerHourScale }
         val hasRain = values.any { it > 0.0 }
         Log.i("WeatherApp", "Minutely precipitation display updated")
-        if (!hasRain) {
-            minutelyCard.visibility = View.GONE
-            return
-        }
-        minutelyCard.visibility = View.VISIBLE
+        setHomeCardVisible(minutelyCard, hasRain)
+        if (!hasRain) return
         minutelyChart.setPrecip(scaled, clippedTimes)
         val peakIdx = scaled.indices.maxByOrNull { scaled[it] } ?: 0
         val peakValue = scaled.getOrNull(peakIdx) ?: 0.0
@@ -2189,8 +2199,7 @@ class WeatherFragment : Fragment() {
         tvMinutelyPeak.text = buildPeakText(peakMillis, peakValue, peakCat)
         // 这里只渲染卡片。降雨通知仅由 WeatherRiskWorker 经事件台账决定，
         // 因此打开页面、下拉刷新都不会再次弹出系统通知。
-        // 卡片出现后重新校正弹性空白，保持 48 小时卡片底端对齐屏幕底
-        view?.post { if (isAdded) alignBottom() }
+        alignBottom()
     }
 
     // 根据未来两小时分钟级降雨数据生成一行状态说明：当前雨势、变化速度和中途停雨都会优先交代。
@@ -2215,6 +2224,7 @@ class WeatherFragment : Fragment() {
             ivSourceSupplementLogo.visibility=View.GONE
             tvStatus.text=when(WeatherSettings.dataSource(requireContext())) {
                 WeatherSettings.SOURCE_OPEN_METEO -> "Open-Meteo · 模型天气数据（CC BY 4.0）"
+                WeatherSettings.SOURCE_OPEN_METEO_QWEATHER -> "Open-Meteo（CC BY 4.0）· 和风天气"
                 WeatherSettings.SOURCE_QWEATHER -> "数据来自和风天气"
                 else -> if(UserApiConfiguration.read(requireContext()).hasQWeather()) "数据来自彩云天气、和风天气" else "数据来自彩云天气"
             }
@@ -2287,79 +2297,29 @@ class WeatherFragment : Fragment() {
         if (hasRenderableWeatherData()) finishInitialLoading()
     }
 
-    private val enteringWeatherViews = mutableListOf<View>()
-    private var pendingHomeEntrance: android.view.ViewTreeObserver.OnPreDrawListener? = null
-
-    private fun playHomeEntrance() {
-        val host = activity as? MainActivity ?: return
-        val root = view ?: return
-        if (!isResumed || !isCurrentPage()) return
-        val scroll = root.findViewById<ScrollView>(R.id.weatherRoot)
-        if (lastWeatherScrollY > 0 || scroll.scrollY > 0 || !host.takeHomeEntrance()) return
-        var aligned = false
-        val listener = object : android.view.ViewTreeObserver.OnPreDrawListener {
-            override fun onPreDraw(): Boolean {
-                val visible = view === root && isResumed && isCurrentPage() && scroll.scrollY == 0
-                if (visible && !aligned && alignHourlyCard(root, firstDraw = true)) {
-                    aligned = true
-                    // Re-measure once so the first visible frame already has its final spacing.
-                    return false
-                }
-                root.viewTreeObserver.removeOnPreDrawListener(this)
-                pendingHomeEntrance = null
-                if (visible) revealHomeWeather(root, scroll)
-                return true
-            }
-        }
-        pendingHomeEntrance = listener
-        root.viewTreeObserver.addOnPreDrawListener(listener)
-        root.invalidate()
-    }
-
-    private fun revealHomeWeather(root: View, scroll: ScrollView) {
-        fun reveal(layer: View, startAlpha: Float, duration: Long) {
-            enteringWeatherViews += layer
-            layer.alpha = startAlpha
-            layer.animate().alpha(1f).setDuration(duration)
-                .setInterpolator(DecelerateInterpolator(1.65f)).withEndAction {
-                    enteringWeatherViews.remove(layer)
-                }.start()
-        }
-        reveal(root.findViewById(R.id.topOverlayContent), .52f, 200L)
-        reveal(scroll, .32f, 330L)
-    }
-
-    private fun finishHomeEntrance() {
-        pendingHomeEntrance?.let { listener ->
-            view?.viewTreeObserver?.takeIf { it.isAlive }?.removeOnPreDrawListener(listener)
-        }
-        pendingHomeEntrance = null
-        enteringWeatherViews.toList().forEach { item ->
-            item.animate().cancel()
-            item.alpha = 1f
-        }
-        enteringWeatherViews.clear()
-    }
+    private val homeWeatherCrossfade = HomeWeatherCrossfade()
 
     private fun finishInitialLoading() {
-        if (!::weatherLoadingOverlay.isInitialized) return
-        weatherLoadingOverlay.hideLoading()
-        playHomeEntrance()
+        if (::weatherLoadingOverlay.isInitialized) weatherLoadingOverlay.hideLoading()
     }
 
     private fun hasRenderableWeatherData(): Boolean =
         lastTemp != null || lastSkycon != null || hourlyLabels.isNotEmpty() || dailySource != null
 
-    /** Give updated readings a small fade without pulsing the entire scroll surface. */
-    private fun animateWeatherDataSwap() {
-        if (!isResumed || !isCurrentPage() || !hasRenderableWeatherData() || !ValueAnimator.areAnimatorsEnabled()) return
-        if (pendingHomeEntrance != null || enteringWeatherViews.isNotEmpty()) return
-        for (label in listOf(tvTemp, tvDesc, tvHighLow)) {
-            label.animate().cancel()
-            label.alpha = .90f
-            label.animate().alpha(1f).setStartDelay(0L).setDuration(160L)
-                .setInterpolator(DecelerateInterpolator()).start()
+    private fun renderRefreshedWeather(update: () -> Unit) {
+        if (previewMode || !isResumed || !isCurrentPage() || !weatherBoundToView ||
+            !ValueAnimator.areAnimatorsEnabled()
+        ) {
+            homeWeatherCrossfade.finish()
+            update()
+            return
         }
+        homeWeatherCrossfade.render(listOf(
+            tvTemp, tvDesc, tvHighLow, tvAqiLevel, tvAqiValue, tvAqiDesc,
+            tvFeelsValue, tvFeelsDesc, tvUvValue, tvUvDesc, tvWindLevel, tvWindDesc,
+            tvHumidityValue, tvHumidityDesc, tvHumidityDew, tvVisibilityValue, tvVisibilityDesc,
+            tvSunrise, tvSunset, tvSunDuration, tvMinutelySummary, tvMinutelyPeak
+        ), update)
     }
 
     // 后台拉取气压变化趋势（hPa/小时），成功后更新气压仪表盘箭头
@@ -2552,36 +2512,52 @@ class WeatherFragment : Fragment() {
     }
 
     // ===== 把数据显示到界面 =====
-    private fun showWeather(result: Result?) {
+    private fun showWeather(result: Result?, fromStartup: Boolean = false) {
         if (result == null) {
             setStatusError("数据为空")
             return
         }
+        weatherBoundToView = result.realtime != null || result.hourly != null || result.daily != null
         result.realtime?.let { showRealtime(it) }
         result.hourly?.let { showHourly(it) }
         result.daily?.let { showDaily(it) }
         applyBackground()
         // 彩云详情图表使用同一份 result.hourly.air_quality；实时快照仅覆盖时间线的“现在”。
         val timeline=AirQualityTimelineFactory.caiyun(result,lastServerTimeMillis.takeIf {it>0} ?: System.currentTimeMillis())
-        if(WeatherSettings.useOpenMeteo(requireContext())) applyOpenMeteoAir(result)
-        else applyAirQualityTimeline(timeline)
+        val context = requireContext()
+        when {
+            WeatherSettings.useQWeatherSupplement(context) -> {
+                val air = WeatherCache.loadSupplementalAir(context, page)
+                applyAirQualityTimeline(air?.let { AirQualityTimelineFactory.qweather(it) }
+                    ?: AirQualityTimeline.empty(AirQualitySource.QWEATHER))
+            }
+            WeatherSettings.useOpenMeteo(context) -> applyOpenMeteoAir(result)
+            else -> applyAirQualityTimeline(timeline)
+        }
         // 仅在至少有一类可展示天气数据时退出加载态；接口返回空对象时继续显示准确骨架。
         if (hasRenderableWeatherData()) finishInitialLoading()
-        // 预警独立使用和风；彩云缓存及响应中的预警一律不进入界面。
-        if(WeatherSettings.useOpenMeteo(requireContext())) { clearAlerts();refreshAlertEntry() }
-        else supplementAlertsFromQWeather(emptySet()) { refreshAlertEntry() }
-        // 分钟级降水：彩云免费套餐 minutely 可能未返回，为空时隐藏卡片
-        val m = result.minutely
+        if (!fromStartup) {
+            if (WeatherSettings.useOpenMeteo(context) && !WeatherSettings.useQWeatherSupplement(context)) {
+                clearAlerts()
+                refreshAlertEntry()
+            } else {
+                supplementAlertsFromQWeather()
+            }
+        }
+        // A stale minute series is historical, never shifted to the current clock.
+        val m = result.minutely.takeUnless { fromStartup && displayingOldSnapshot }
         val minutelyValues = m?.precipitation2h ?: m?.precipitation
         val nowMillis = System.currentTimeMillis()
         val minutelyTimes = minutelyValues?.mapIndexed { i, _ ->
             // 彩云 v2.6 precipitation_2h 为未来两小时共 120 个逐分钟值。
-            nowMillis + i * 60_000L
+            (lastServerTimeMillis.takeIf { fromStartup && it > 0L } ?: nowMillis) + i * 60_000L
         }
         renderMinutely(minutelyValues, minutelyTimes, m?.description)
-        fetchPressureTrend()
         showDataSourceFooter()
-        requestCaiyunPhenomenonCalibration(result.realtime?.skycon)
+        if (!fromStartup) {
+            fetchPressureTrend()
+            requestCaiyunPhenomenonCalibration(result.realtime?.skycon)
+        }
     }
 
     /**
@@ -2641,55 +2617,65 @@ class WeatherFragment : Fragment() {
         alertColors.clear()
     }
 
-    // 用和风 v1 预警补齐彩云缺失的预警；existingKeys 是已展示的简化名称归一化集合
-    private fun supplementAlertsFromQWeather(
-        existingKeys: Set<String>,
-        onCompleted: () -> Unit
-    ) {
+    private fun supplementAlertsFromQWeather() {
         val request = ++alertRequestVersion
         val appContext = requireContext().applicationContext
-        if(BuildConfig.USER_CONFIGURABLE && !UserApiConfiguration.read(appContext).hasQWeather()) { clearAlerts();onCompleted();return }
-        val sourceKey=WeatherSettings.sourceKey(appContext)
+        val scope = WeatherCache.homeScope(appContext)
+        val city = page.copy()
+        if (BuildConfig.USER_CONFIGURABLE && !UserApiConfiguration.read(appContext).hasQWeather()) {
+            applyQAlerts(emptyList())
+            return
+        }
         Thread {
             val alerts = try {
-                QWeatherApi.fetchAlertsOnlyChecked(appContext, page.lat, page.lng)
-            } catch (e: Exception) {
-                return@Thread // 请求失败不能当成“预警已解除”。
+                if (WeatherSettings.useQWeatherSupplement(appContext)) QWeatherSupplement.alerts(appContext, city)
+                else QWeatherApi.fetchAlertsOnlyChecked(appContext, city.lat, city.lng)
+            } catch (_: Exception) {
+                return@Thread // A transport error does not clear the last valid alerts.
             }
             val act = activity ?: return@Thread
             act.runOnUiThread {
-                if (!isAdded || view == null || request != alertRequestVersion || sourceKey!=WeatherSettings.sourceKey(appContext)) return@runOnUiThread
-                clearAlerts()
-                val seen = HashSet(existingKeys)
-                val now = System.currentTimeMillis()
-                for (a in alerts) {
-                    if (a.messageType == "cancel" || a.expireTimeMillis <= now) continue
-                    if (AlertVisibilityPolicy.isAgriculturalAlert(
-                            a.eventTypeName, a.headline, a.senderName
-                        )) continue
-                    val title = alertShortName(a)
-                    val key = normalizeAlertKey(title)
-                    if (key.isEmpty() || !seen.add(key)) continue
-
-                    alertTitles.add(title)
-                    alertLevels.add(alertLevelName(a))
-                    alertContents.add(
-                        buildString {
-                            append(a.description.ifBlank { a.headline }.ifBlank { "暂无详细预警内容" })
-                            if (a.instruction.isNotBlank()) append("\n防御指南：").append(a.instruction)
-                        }
-                    )
-                    alertTimes.add(formatAlertTime(a.issuedTimeMillis))
-                    alertCodes.add(a.eventTypeCode)
-                    alertLocations.add(
-                        WeatherAddressFormatter.label(page)
-                    )
-                    alertSources.add(a.senderName)
-                    alertColors.add(alertColorOf(a))
+                if (!isAdded || view == null || request != alertRequestVersion ||
+                    !matchesPage(city) || scope != WeatherCache.homeScope(appContext)
+                ) return@runOnUiThread
+                if (!previewMode && !WeatherSettings.useQWeatherSupplement(appContext)) {
+                    viewLifecycleOwner.lifecycleScope.launch(WeatherCache.homePersistenceDispatcher) {
+                        if (scope == WeatherCache.homeScope(appContext)) WeatherCache.saveHomeAlerts(appContext, city, alerts)
+                    }
                 }
-                onCompleted()
+                applyQAlerts(alerts)
             }
         }.start()
+    }
+
+    private fun applyQAlerts(alerts: List<QAlert>) {
+        clearAlerts()
+        val alertNow = System.currentTimeMillis()
+        val seenAlertNames = HashSet<String>()
+        for (a in alerts) {
+            if (a.messageType == "cancel" || a.expireTimeMillis <= alertNow) continue
+            if (AlertVisibilityPolicy.isAgriculturalAlert(
+                    a.eventTypeName, a.headline, a.senderName
+                )) continue
+            val name = alertShortName(a)
+            val nameKey = normalizeAlertKey(name)
+            if (nameKey.isEmpty() || !seenAlertNames.add(nameKey)) continue
+            val desc = buildString {
+                append(a.description.ifBlank { a.headline }.ifBlank { "暂无详细预警内容" })
+                if (a.instruction.isNotBlank()) {
+                    append("\n防御指南：").append(a.instruction)
+                }
+            }
+            alertTitles.add(name)
+            alertLevels.add(alertLevelName(a))
+            alertContents.add(desc)
+            alertTimes.add(formatAlertTime(a.issuedTimeMillis))
+            alertCodes.add(a.eventTypeCode)
+            alertLocations.add(WeatherAddressFormatter.label(page))
+            alertSources.add(a.senderName)
+            alertColors.add(alertColorOf(a))
+        }
+        refreshAlertEntry()
     }
 
     // 预警标题去重归一化：忽略括号、方括号与空白，让同一预警在彩云/和风两种措辞下不重复
@@ -2697,18 +2683,29 @@ class WeatherFragment : Fragment() {
         s.replace(Regex("[\\[\\]（）()\\s]"), "").trim()
 
     // 预警入口：有预警显示并轮播，无预警隐藏（彩云/和风共用）
+    private fun setHomeCardVisible(card: View, visible: Boolean) {
+        val visibility = if (visible) View.VISIBLE else View.GONE
+        if (card.visibility == visibility) return
+        val root = view
+        val host = activity as? MainActivity
+        if (root != null && host?.homeContentReadyForDraw == true &&
+            startupFrame?.isCompleted == true && isResumed && isCurrentPage() &&
+            ValueAnimator.areAnimatorsEnabled()
+        ) {
+            homeCardAppearance.setVisible(root, card, visible) { alignHourlyCard(root) }
+        } else {
+            card.visibility = visibility
+        }
+    }
+
     private fun refreshAlertEntry() {
         if (!::alertEntryCard.isInitialized) return
         val showAlert = alertTitles.isNotEmpty()
-        if (showAlert != (alertEntryCard.visibility == View.VISIBLE)) {
-            animateWeatherLayoutChange(fadeIn = alertEntryCard.takeIf { showAlert })
-        }
+        setHomeCardVisible(alertEntryCard, showAlert)
         if (!showAlert) {
-            alertEntryCard.visibility = View.GONE
             ivAlertIcon.visibility = View.GONE
             alertHandler.removeCallbacks(alertScrollRunnable)
         } else {
-            alertEntryCard.visibility = View.VISIBLE
             ivAlertIcon.visibility = View.VISIBLE
             alertIndex = 0
             tvAlertEntry.text = alertTitles[0]
@@ -2724,27 +2721,6 @@ class WeatherFragment : Fragment() {
         }
     }
 
-    private fun animateWeatherLayoutChange(fadeIn: View? = null) {
-        if (!isResumed || !isCurrentPage() || pendingHomeEntrance != null ||
-            !hasRenderableWeatherData() || !ValueAnimator.areAnimatorsEnabled()
-        ) return
-        val scroll = view?.findViewById<ScrollView>(R.id.weatherRoot) ?: return
-        if (scroll.scrollY > dp(32f) || scroll.translationY != 0f) return
-        val content = scroll.getChildAt(0) as? LinearLayout ?: return
-        if (!content.isLaidOut || !tvTemp.isShown) return
-
-        val movement = android.transition.ChangeBounds().addTarget(scroll)
-        for (index in 0 until content.childCount) {
-            val child = content.getChildAt(index)
-            if (child !== fadeIn && child.visibility == View.VISIBLE) movement.addTarget(child)
-        }
-        val transition = android.transition.TransitionSet()
-            .addTransition(movement)
-            .setDuration(230L)
-            .setInterpolator(DecelerateInterpolator(1.5f))
-        fadeIn?.let { transition.addTransition(android.transition.Fade(android.transition.Fade.IN).addTarget(it)) }
-        android.transition.TransitionManager.beginDelayedTransition(refreshLayout, transition)
-    }
 
     // 预警入口精简名称：从 code 生成 "暴雨红色预警" / "雷雨大风黄色预警" 等
     private fun alertShortName(a: AlertContent): String = WeatherAlertPresentation.title(a)
@@ -3303,11 +3279,11 @@ class WeatherFragment : Fragment() {
             cityName = WeatherAddressFormatter.label(page),
             rankingCityName = page.name,
             metricPoints = metricPoints,
-            yesterdayMetricPoints = yesterdayMetricPoints,
+            yesterdayMetricPoints = mergeMetricPoints(yesterdayMetricPoints, cachedMetricHistory(), includeMissingHours = true),
             historicalSupplementedKinds = historicalSupplementedKinds,
             windDirection = lastWindDir,
             lifeAdvice = lifeAdvice,
-            airPoints = (historicalAirQualityPoints + airQualityPoints)
+            airPoints = (historicalAirQualityPoints + airQualityPoints + cachedAirHistory())
                 .distinctBy { it.timeMillis / 3_600_000L }
                 .ifEmpty { listOfNotNull(currentAirQuality) },
             currentAir = currentAirQuality,
@@ -3408,17 +3384,41 @@ class WeatherFragment : Fragment() {
         callbacks.forEach { it.invoke() }
     }
 
+    private fun cachedMetricHistory(): List<HourlyMetricPoint> {
+        val context = context ?: return emptyList()
+        val now = currentHourMillis()
+        return ForecastDayHistoryCache.load(context, page)
+            .filter { it.time in (now - 24L * ForecastDetailData.HOUR) until now }.map(ForecastHour::asHistoryMetric)
+    }
+
+    private fun cachedAirHistory(): List<AirQualityPoint> {
+        val context = context ?: return emptyList()
+        val now = currentHourMillis()
+        return ForecastDayHistoryCache.load(context, page).mapNotNull {
+            val aqi = it.aqi ?: return@mapNotNull null
+            if (it.time !in (now - 24L * ForecastDetailData.HOUR) until now) return@mapNotNull null
+            AirQualityPoint(timeMillis = it.time, aqi = aqi, source = airQualityTimeline.source)
+        }
+    }
+
     private fun mergeMetricPoints(
         primary: List<HourlyMetricPoint>,
-        supplemental: List<HourlyMetricPoint>
+        supplemental: List<HourlyMetricPoint>,
+        includeMissingHours: Boolean = false
     ): List<HourlyMetricPoint> {
         val extra = supplemental.associateBy { it.timeMillis / 3_600_000L }
-        val base = if (primary.isEmpty()) supplemental else primary
-        return base.map { point ->
+        val base = when {
+            primary.isEmpty() -> supplemental
+            includeMissingHours -> (primary + supplemental).distinctBy { it.timeMillis / ForecastDetailData.HOUR }
+            else -> primary
+        }
+        val merged = base.map { point ->
             val second = extra[point.timeMillis / 3_600_000L] ?: return@map point
             point.copy(
                 temperature = point.temperature ?: second.temperature,
                 feelsLike = point.feelsLike ?: second.feelsLike,
+                precipitationProbability = point.precipitationProbability ?: second.precipitationProbability,
+                precipitationAmountMm = point.precipitationAmountMm ?: second.precipitationAmountMm,
                 uv = point.uv ?: second.uv,
                 windKmh = point.windKmh ?: second.windKmh,
                 gustKmh = point.gustKmh ?: second.gustKmh,
@@ -3427,7 +3427,8 @@ class WeatherFragment : Fragment() {
                 visibilityKm = point.visibilityKm ?: second.visibilityKm,
                 humidityPercent = point.humidityPercent ?: second.humidityPercent
             )
-        }.take(24)
+        }
+        return if (includeMissingHours) merged.sortedBy { it.timeMillis } else merged.take(24)
     }
 
     private fun toHpa(value: Double): Double = when {
@@ -3490,25 +3491,27 @@ class WeatherFragment : Fragment() {
         dailySource?.let(::renderDaily)
     }
 
+    private fun showHighLow(high: Double?, low: Double?) {
+        lastHigh = high
+        lastLow = low
+        val context = requireContext()
+        tvHighLow.text = "最高 ${WeatherSettings.tempText(context, high)}   最低 ${WeatherSettings.tempText(context, low)}"
+    }
+
     private fun showDaily(daily: Daily) {
         val temps = daily.temperature.orEmpty()
         val skycons = daily.skycon.orEmpty()
         val precipts = daily.precipitation.orEmpty()
 
-        // 日预报以日期键匹配“今天”，避免服务端排序变化时高低温错位。
-        val todayKey = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(System.currentTimeMillis())
-        val today = temps.firstOrNull { (it.date ?: "").take(10) == todayKey } ?: temps.firstOrNull()
-        if (today != null) {
-            lastHigh = today.max
-            lastLow = today.min
-            tvHighLow.text =
-                "最高 ${WeatherSettings.tempText(requireContext(), today.max)}   最低 ${WeatherSettings.tempText(requireContext(), today.min)}"
-        }
+        // 日预报必须匹配今天，不能拿数组中的第一天代替。
+        val todayKey = java.time.LocalDate.now().toString()
+        val today = temps.firstOrNull { it.date?.take(10) == todayKey }
+        showHighLow(today?.max, today?.min)
 
         val astroList = daily.astro.orEmpty()
         applyCaiyunSunAstronomy(caiyunV26Astro.ifEmpty { astroList })
 
-        lifeAdvice = if(WeatherSettings.useOpenMeteo(requireContext())) emptyList() else LifeAdviceFactory.fromQWeather(LifeAdviceCache.load(requireContext(), page.lat, page.lng))
+        lifeAdvice = if(WeatherSettings.useOpenMeteo(requireContext()) && !WeatherSettings.useQWeatherSupplement(requireContext())) emptyList() else LifeAdviceFactory.fromQWeather(LifeAdviceCache.load(requireContext(), page.lat, page.lng))
         renderLifeAdvice()
 
         // 彩云字段按日期对齐，不能按数组索引把天气/降水错配。
@@ -3523,7 +3526,9 @@ class WeatherFragment : Fragment() {
                 skycon = skyconByDate[date],
                 high = t.max?.let { v -> Math.round(v).toInt() },
                 low = t.min?.let { v -> Math.round(v).toInt() },
-                precipProb = precipitationByDate[date]
+                precipProb = precipitationByDate[date],
+                highCelsius = t.max,
+                lowCelsius = t.min
             )
         }
         CaiyunWeatherHistorySnapshotCache.save(
@@ -3635,11 +3640,11 @@ class WeatherFragment : Fragment() {
 
         // 按设置的单位换算后再显示/画条（内部数据始终是摄氏）
         val c = requireContext()
-        fun show(v: Int?): Int? = v?.let { WeatherSettings.tempDisplay(c, it.toDouble())?.toInt() }
+        fun show(v: Double?): Int? = WeatherSettings.tempDisplay(c, v)?.let { Math.round(it).toInt() }
 
         // 所有温度条共用同一全局刻度，才能对比出每天的温差长短
-        val validLows = list.mapNotNull { show(it.low) }
-        val validHighs = list.mapNotNull { show(it.high) }
+        val validLows = list.mapNotNull { show(it.lowCelsius) }
+        val validHighs = list.mapNotNull { show(it.highCelsius) }
         var minTemp = validLows.minOrNull() ?: 0
         var maxTemp = validHighs.maxOrNull() ?: 40
         if (maxTemp <= minTemp) maxTemp = minTemp + 1
@@ -3671,8 +3676,8 @@ class WeatherFragment : Fragment() {
             dateTexts.add(dateText)
             chartSkycons.add(skyValue)
             chartProbs.add(prob)
-            chartHighs.add(show(f?.high))
-            chartLows.add(show(f?.low))
+            chartHighs.add(show(f?.highCelsius))
+            chartLows.add(show(f?.lowCelsius))
 
             dailyRows.add(
                 buildDailyRow(
@@ -3681,8 +3686,8 @@ class WeatherFragment : Fragment() {
                     forecastDate = f?.date?.take(10),
                     date = dateText,
                     skycon = skyValue,
-                    low = show(f?.low),
-                    high = show(f?.high),
+                    low = show(f?.lowCelsius),
+                    high = show(f?.highCelsius),
                     minTemp = minTemp,
                     maxTemp = maxTemp,
                     currentTemp =

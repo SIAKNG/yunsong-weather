@@ -33,7 +33,7 @@ object MeeAirQualityRankRepository {
 
     fun fetch(city: String): Result {
         urls.forEach { url ->
-            val parsed = runCatching { parse(WeatherHttp.get(url), city) }.getOrDefault(Result.Unavailable)
+            val parsed = runCatching { parse(WeatherHttp.get(url, diagnosticSource = WeatherDiagnosticMonitor.Source.AIR_RANK), city) }.getOrDefault(Result.Unavailable)
             if (parsed !is Result.Unavailable) return parsed
         }
         return Result.Unavailable

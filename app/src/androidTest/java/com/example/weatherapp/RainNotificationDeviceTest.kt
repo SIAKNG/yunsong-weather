@@ -102,7 +102,7 @@ class RainNotificationDeviceTest {
         val shown = notification(wet.notificationId, "雨即将结束")
         assertTrue(shown.extras.getString(Notification.EXTRA_TITLE).orEmpty().contains("雨即将结束"))
         val body = shown.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString()
-        assertTrue(body.contains("雨停后可以正常出行"))
+        assertTrue(body.contains("可以等雨小些再出门"))
         assertFalse(shown.flags and Notification.FLAG_ONLY_ALERT_ONCE != 0)
         manager.cancel(wet.notificationId)
         Thread.sleep(100)
@@ -140,7 +140,7 @@ class RainNotificationDeviceTest {
         WeatherRiskRefresh.publishRain(c, city, dry.rates, dry.times, t + minute)
         val shown = notification(id, "降雨已结束")
         assertTrue(shown.extras.getString(Notification.EXTRA_TITLE).orEmpty().contains("降雨已结束"))
-        assertTrue(shown.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString().contains("可以正常出行"))
+        assertTrue(shown.extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString().contains("地面可能还湿"))
     }
     @Test fun fiveMinuteAndOneMinuteSourcesShareIdenticalDeduplicationRules() {
         for (step in listOf(1, 5)) {
@@ -153,4 +153,3 @@ class RainNotificationDeviceTest {
         }
     }
 }
-

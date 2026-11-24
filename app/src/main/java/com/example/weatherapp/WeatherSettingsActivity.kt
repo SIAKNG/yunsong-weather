@@ -34,6 +34,8 @@ import com.google.android.material.color.DynamicColors
 import com.google.android.material.color.MaterialColors
 import android.widget.CompoundButton
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.runBlocking
 import java.util.concurrent.Executors
 
@@ -45,84 +47,106 @@ class WeatherSettingsActivity : WeatherActivity() {
         internal const val RESULT_RETRY_LOCATION = RESULT_FIRST_USER
     }
 
-    private val saveProblemDiagnostics = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
-        if (uri != null) {
-            val result = runCatching {
-                requireNotNull(contentResolver.openOutputStream(uri)).use { output ->
-                    output.write(WeatherDiagnostics.report(this).toByteArray(Charsets.UTF_8))
-                }
+    private val saveProblemDiagnostics = registerForActivityResult(ActivityResultContracts.CreateDocument(WeatherDiagnostics.MIME_TYPE)) { uri ->
+        if (uri != null) runDiagnosticAction {
+            requireNotNull(contentResolver.openOutputStream(uri)).use { output ->
+                WeatherDiagnostics.writeArchive(applicationContext, output)
             }
-            Toast.makeText(this, if (result.isSuccess) "诊断报告已保存" else "诊断报告保存失败", Toast.LENGTH_SHORT).show()
+            "诊断报告已保存"
         }
     }
 
     private fun showProblemDiagnostics() {
         val recording = WeatherDiagnostics.enabled(this)
         val actions = mutableListOf<Pair<String, () -> Unit>>()
-        actions += (if (recording) "停止记录" else "开始记录") to {
+        actions += (if (recording) "停止记录" else "开始记录并复现问题") to {
             WeatherDiagnostics.setEnabled(this, !recording)
-            showProblemDiagnostics()
+            if (recording) {
+                showProblemDiagnostics()
+            } else {
+                Toast.makeText(this, "记录已开始。复现问题后回到这里标记并导出，最多记录 30 分钟。", Toast.LENGTH_LONG).show()
+            }
         }
-        if (recording) actions += "标记问题发生" to {
-            WeatherDiagnostics.record(this, WeatherDiagnostics.Event.USER_MARK)
-            Toast.makeText(this, "已标记问题时间", Toast.LENGTH_SHORT).show()
-        }
-        actions += "重试系统定位" to {
+        if (recording) actions += "标记刚出现的问题" to { showDiagnosticIssuePicker() }
+        actions += (if (recording) "重试系统定位" else "记录并重试系统定位") to {
+            if (!recording) WeatherDiagnostics.setEnabled(this, true)
+            WeatherDiagnostics.record(this, WeatherDiagnostics.Event.LOCATION_RETRY)
             setResult(RESULT_RETRY_LOCATION)
             finish()
         }
-        actions += "查看记录（${WeatherDiagnostics.entries(this).size} 条）" to {
-            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
-                .setTitle("诊断记录")
-                .setMessage(WeatherDiagnostics.report(this))
-                .setPositiveButton("返回") { _, _ -> showProblemDiagnostics() }
-                .show()
+        actions += "保存日志" to {
+            WeatherDiagnosticMonitor.flushCurrentWindow()
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                saveProblemDiagnostics.launch(WeatherDiagnostics.archiveName())
+            } else {
+                runDiagnosticAction {
+                    WeatherDiagnostics.saveToDownloads(applicationContext)
+                    "诊断包已保存到下载文件夹"
+                }
+            }
         }
-        actions += "保存 TXT 报告" to { exportProblemDiagnostics() }
-        actions += "分享 TXT 报告" to { shareProblemDiagnostics() }
-        actions += "清除记录" to {
-            WeatherDiagnostics.clear(this)
-            showProblemDiagnostics()
+        actions += "分享日志" to { shareDiagnosticArchive() }
+        actions += "清除本机记录" to {
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                .setTitle("清除本机记录？")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("清除") { _, _ ->
+                    WeatherDiagnostics.clear(this)
+                    showProblemDiagnostics()
+                }.create().showFrosted(this)
         }
         com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
-            .setTitle(if (recording) "问题诊断 · 正在记录" else "问题诊断与定位")
+            .setTitle(if (recording) "问题诊断 · 正在记录" else "问题诊断与日志")
             .setItems(actions.map { it.first }.toTypedArray()) { _, which -> actions[which].second() }
             .setNegativeButton("关闭", null)
-            .show()
+            .create().showFrosted(this)
     }
 
-    private fun shareProblemDiagnostics() {
-        val appContext = applicationContext
-        updateExecutor.execute {
-            val report = runCatching { WeatherDiagnostics.shareIntent(appContext) }
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                val intent = report.getOrNull()
-                if (intent == null) {
-                    Toast.makeText(this, "诊断报告生成失败", Toast.LENGTH_SHORT).show()
-                    return@runOnUiThread
-                }
-                try {
-                    startActivity(Intent.createChooser(intent, "分享诊断报告"))
-                } catch (_: android.content.ActivityNotFoundException) {
-                    Toast.makeText(this, "找不到可分享报告的应用，请使用保存功能", Toast.LENGTH_SHORT).show()
-                }
+    private fun shareDiagnosticArchive() {
+        WeatherDiagnosticMonitor.flushCurrentWindow()
+        lifecycleScope.launch {
+            val clients = withContext(Dispatchers.IO) { WeatherDiagnosticMail.clients(applicationContext) }
+            val preferred = WeatherDiagnosticMail.preferredClient(this@WeatherSettingsActivity, clients)
+            when {
+                preferred != null -> openDiagnosticEmail(preferred)
+                clients.isEmpty() -> Toast.makeText(this@WeatherSettingsActivity,
+                    "未找到支持诊断包附件的邮件应用，可以先保存日志", Toast.LENGTH_LONG).show()
+                else -> com.google.android.material.dialog.MaterialAlertDialogBuilder(this@WeatherSettingsActivity)
+                    .setTitle("选择邮件应用")
+                    .setItems(clients.map { it.label }.toTypedArray()) { _, index -> openDiagnosticEmail(clients[index]) }
+                    .setNegativeButton("取消", null)
+                    .create().showFrosted(this@WeatherSettingsActivity)
             }
         }
     }
 
-    private fun exportProblemDiagnostics() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            saveProblemDiagnostics.launch("云松天气-诊断记录.txt")
-            return
-        }
-        val appContext = applicationContext
-        updateExecutor.execute {
-            val saved = runCatching { WeatherDiagnostics.saveToDownloads(appContext) }.isSuccess
-            runOnUiThread {
-                Toast.makeText(appContext, if (saved) "诊断报告已保存到下载文件夹" else "诊断报告保存失败",
-                    Toast.LENGTH_SHORT).show()
+    private fun openDiagnosticEmail(client: WeatherDiagnosticMail.Client) {
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { WeatherDiagnosticMail.composeIntent(applicationContext, client) }
             }
+            val opened = result.mapCatching { startActivity(it) }.isSuccess
+            if (!opened) Toast.makeText(this@WeatherSettingsActivity,
+                "无法打开邮件撰写界面，可以先保存日志", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun showDiagnosticIssuePicker() {
+        val issues = WeatherDiagnostics.Issue.values()
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle("标记问题类别")
+            .setItems(issues.map { it.label }.toTypedArray()) { _, index ->
+                WeatherDiagnostics.mark(this, issues[index])
+                Toast.makeText(this, "已标记问题时间", Toast.LENGTH_SHORT).show()
+                showProblemDiagnostics()
+            }.setNegativeButton("返回") { _, _ -> showProblemDiagnostics() }
+            .create().showFrosted(this)
+    }
+
+    private fun runDiagnosticAction(action: () -> String) {
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching(action) }
+            Toast.makeText(this@WeatherSettingsActivity, result.getOrDefault("诊断报告保存失败"), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -346,27 +370,23 @@ class WeatherSettingsActivity : WeatherActivity() {
 
         setupReminderSwitches()
         tvNotificationDiagnostics = findViewById(R.id.tvNotificationDiagnostics)
-        findViewById<View>(R.id.btnSendNotificationTest).setOnClickListener {
+        val permissionSettings = WeatherPermissionSettings(this)
+        fun sendTestNotifications() {
             if (WeatherNotificationCenter.postTestNotifications(this)) {
-                Toast.makeText(this, "已发送三类测试通知，请查看通知栏", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "请先在系统设置中允许云松天气发送通知", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "已发送测试通知，请查看已开启的通知分类", Toast.LENGTH_SHORT).show()
             }
             refreshNotificationDiagnostics()
         }
+        findViewById<View>(R.id.btnSendNotificationTest).setOnClickListener {
+            if (WeatherNotificationCenter.canNotify(this)) sendTestNotifications()
+            else permissionCoordinator.requestNotifications { if (it) sendTestNotifications() }
+        }
         findViewById<View>(R.id.btnOpenNotificationSystemSettings).setOnClickListener {
-            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                !WeatherPermissionCoordinator.canScheduleExactAlarms(this)
-            ) {
-                Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
-                    data = Uri.fromParts("package", packageName, null)
-                }
-            } else {
-                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                    data = Uri.fromParts("package", packageName, null)
-                }
-            }
-            startActivity(intent)
+            permissionSettings.openNotifications()
+        }
+        findViewById<View>(R.id.btnOpenExactAlarmSettings).apply {
+            visibility = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) View.VISIBLE else View.GONE
+            setOnClickListener { permissionSettings.openExactAlarm() }
         }
         refreshNotificationDiagnostics()
 
@@ -497,7 +517,7 @@ class WeatherSettingsActivity : WeatherActivity() {
                 }.start()
             }
         }
-        dialog.show()
+        dialog.showFrosted(this)
     }
 
     private fun setupReminderSwitches() {
@@ -572,7 +592,7 @@ class WeatherSettingsActivity : WeatherActivity() {
             val config = UserApiConfiguration.read(this)
             findViewById<TextView>(R.id.tvSourceValue).text = when {
                 config.effectiveSource() == WeatherSettings.SOURCE_OPEN_METEO -> "Open-Meteo · 免费默认"
-                config.effectiveSource() == WeatherSettings.SOURCE_QWEATHER -> "和风 · 自行配置"
+                config.effectiveSource() == WeatherSettings.SOURCE_OPEN_METEO_QWEATHER -> "Open-Meteo + 和风"
                 else -> "彩云 ${config.caiyunVersion} · 自行配置"
             }
         }
@@ -633,7 +653,7 @@ class WeatherSettingsActivity : WeatherActivity() {
             .setMessage("下载约 " + size + " MB。下载完成后，将打开 Android 安装确认。")
             .setNegativeButton("稍后", null)
             .setPositiveButton("下载更新") { _, _ -> updateDownload.start(result.version, apk) }
-            .show()
+            .create().showFrosted(this)
     }
 
     private fun renderUpdateDownload(state: AppUpdateDownloadModel.State) {
@@ -660,7 +680,7 @@ class WeatherSettingsActivity : WeatherActivity() {
                     }
                     updateProgressDialog = AlertDialog.Builder(this).setTitle("正在下载 " + state.version)
                         .setView(layout).setCancelable(false)
-                        .setNegativeButton("取消下载") { _, _ -> updateDownload.cancel() }.show()
+                        .setNegativeButton("取消下载") { _, _ -> updateDownload.cancel() }.create().showFrosted(this)
                 }
                 updateProgressBar?.progress = state.percent
             }
@@ -706,7 +726,7 @@ class WeatherSettingsActivity : WeatherActivity() {
                     }.onFailure {
                         Toast.makeText(this, "请在系统设置中允许云松天气安装应用", Toast.LENGTH_LONG).show()
                     }
-                }.show()
+                }.create().showFrosted(this)
             return
         }
         runCatching { startActivity(AppUpdateInstaller.installationIntent(this, update.file)) }

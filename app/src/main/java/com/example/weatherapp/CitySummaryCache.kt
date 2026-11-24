@@ -9,7 +9,6 @@ import java.util.Locale
  */
 object CitySummaryCache {
     private const val PREFS = "city_summary_cache"
-    private const val MAX_ENTRIES = 80
 
     data class Snapshot(
         val temperatureC: Double,
@@ -55,14 +54,13 @@ object CitySummaryCache {
         val temp = temperatureC?.takeIf { it.isFinite() } ?: return
         if (!lat.isFinite() || !lng.isFinite()) return
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        pruneIfNeeded(prefs)
         val key = key(context, lat, lng)
-        prefs.edit()
-            .putLong("${key}_at", System.currentTimeMillis())
-            .putLong("${key}_temp", temp.toBits())
-            .putString("${key}_weather", weather)
-            .putString("${key}_skycon", skycon)
-            .apply()
+        WeatherDiskCache.write(context, prefs) {
+            putLong("${key}_at", System.currentTimeMillis())
+            putLong("${key}_temp", temp.toBits())
+            putString("${key}_weather", weather)
+            putString("${key}_skycon", skycon)
+        }
     }
 
     private fun key(context: Context, lat: Double, lng: Double): String = String.format(
@@ -72,22 +70,4 @@ object CitySummaryCache {
     )
 
     private fun sourceKey(context: Context): String = WeatherSettings.sourceKey(context)
-
-    private fun pruneIfNeeded(prefs: android.content.SharedPreferences) {
-        val entries = prefs.all.keys.filter { it.endsWith("_at") }
-        if (entries.size <= MAX_ENTRIES) return
-        val remove = entries
-            .sortedBy { prefs.getLong(it, 0L) }
-            .take(entries.size - MAX_ENTRIES)
-        prefs.edit().apply {
-            remove.forEach { atKey ->
-                val prefix = atKey.removeSuffix("_at")
-                remove(atKey)
-                remove("${prefix}_temp")
-                remove("${prefix}_weather")
-                remove("${prefix}_skycon")
-            }
-            apply()
-        }
-    }
 }

@@ -109,9 +109,10 @@ class CityPreviewActivity : WeatherActivity(), WeatherUiHost {
         // 与顶部蒙版使用同一张“实时内容”截图源，使按钮也能模糊其下方滚动内容。
         frag?.addExternalContentMask(btnCancel)
         frag?.addExternalContentMask(btnAdd)
-        // 按钮本身已在内容蒙版截图中隐藏；若再重复注册覆盖层，恢复顺序会把它们留在 INVISIBLE。
-        frag?.addExternalOverlayView(previewCityTitle)
     }
+
+    override fun hostTopMaskBottom(): Int? =
+        if (::topBar.isInitialized) topBar.bottom.takeIf { it > 0 } else null
 
     override fun hostWeatherBackground(skycon: String?, night: Boolean) {
         if (skycon.isNullOrBlank()) return

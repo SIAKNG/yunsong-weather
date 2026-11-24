@@ -8,11 +8,12 @@ class OpenMeteoSourceTest {
     @Test fun blankOrIncompleteLegacyConfigurationHasNoPrivateCredentialRequirement() {
         for(source in listOf("auto","caiyun","qweather")) assertEquals("open_meteo",UserApiConfiguration.Config(source=source).effectiveSource())
     }
-    @Test fun personalCredentialsAlwaysExcludeFreeProvider() {
+    @Test fun configuredQWeatherSupplementsOpenMeteoUnlessCaiyunIsExplicit() {
         val c=UserApiConfiguration.Config(caiyunToken="dummy",qweatherHost="test.qweatherapi.com",qweatherApiKey="dummy")
-        assertEquals("caiyun",c.effectiveSource())
-        assertEquals("qweather",c.copy(source="qweather").effectiveSource())
-        assertEquals("qweather",c.copy(caiyunToken="").effectiveSource())
+        assertEquals(WeatherSettings.SOURCE_OPEN_METEO_QWEATHER,c.effectiveSource())
+        assertEquals("caiyun",c.copy(source="caiyun").effectiveSource())
+        assertEquals(WeatherSettings.SOURCE_OPEN_METEO_QWEATHER,c.copy(source="qweather").effectiveSource())
+        assertEquals(WeatherSettings.SOURCE_OPEN_METEO_QWEATHER,c.copy(caiyunToken="").effectiveSource())
         assertEquals("caiyun",c.copy(qweatherApiKey="").effectiveSource())
     }
     @Test fun coordinatesAreRoundedAndNoSecretsOrIdentifiersAreSent() {

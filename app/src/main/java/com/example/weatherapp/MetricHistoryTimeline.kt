@@ -28,7 +28,7 @@ object MetricHistoryTimelineCache {
     fun load(context: Context, page: CityPage, source: String): MetricHistoryTimeline? {
         val value = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(key(page, source + WeatherSettings.sourceKey(context)), null)
-            ?.let { runCatching { gson.fromJson(it, MetricHistoryTimeline::class.java) }.getOrNull() }
+            ?.let { runCatching { gson.fromJson(WeatherDiskCache.unpack(it), MetricHistoryTimeline::class.java) }.getOrNull() }
             ?: return null
         if (System.currentTimeMillis() - value.savedAtMillis > MAX_AGE_MS || value.points.isEmpty()) return null
         return value.copy(
@@ -61,9 +61,13 @@ object MetricHistoryTimelineCache {
                 .sortedBy { it.timeMillis }
                 .takeLast(24)
         )
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString(key(page, source + WeatherSettings.sourceKey(context)), gson.toJson(timeline))
-            .apply()
+        val target = key(page, source + WeatherSettings.sourceKey(context))
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val packed = WeatherDiskCache.pack(gson.toJson(timeline))
+        WeatherDiskCache.write(context, prefs) {
+            putString(target, packed)
+            putLong("$target@at", timeline.savedAtMillis)
+        }
     }
 
     private fun key(page: CityPage, source: String): String = String.format(

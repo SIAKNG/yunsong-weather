@@ -58,8 +58,10 @@ internal object WeatherWidgetData {
         val rain=h?.precipitation.orEmpty().associateBy{it.datetime}
         val d=b.result?.daily
         val dailySky=d?.skycon.orEmpty().associateBy{it.date?.take(10)}
+        val aqi = if (WeatherSettings.useQWeatherSupplement(context)) WeatherCache.loadSupplementalAir(context, city)?.aqi?.aqi
+            else rt.airQuality?.aqi?.chn ?: rt.aqi?.chn
         return WidgetWeather(city,WeatherSettings.dataSource(context),observed,saved,rt.temperature,rt.apparentTemperature,
-            rt.skycon,rt.humidity?.times(100),rt.wind?.speed,rt.airQuality?.aqi?.chn ?: rt.aqi?.chn,
+            rt.skycon,rt.humidity?.times(100),rt.wind?.speed,aqi,
             h?.temperature.orEmpty().mapNotNull {v ->
                 val t=v.datetime?.let(TimeUtil::parse) ?: return@mapNotNull null
                 if(t<now-30*60_000) null else WidgetHour(t,v.value,skies[v.datetime]?.value,rain[v.datetime]?.probability)
@@ -89,6 +91,6 @@ internal object WeatherWidgetData {
             else -> java.util.Calendar.getInstance().apply{timeInMillis=now}.get(java.util.Calendar.HOUR_OF_DAY) !in 6..17
         }
     }
-    fun sourceName(source: String)=when(source){WeatherSettings.SOURCE_QWEATHER->"和风天气";"open_meteo"->"Open-Meteo";else->"彩云天气"}
+    fun sourceName(source: String)=when(source){WeatherSettings.SOURCE_QWEATHER->"和风天气";WeatherSettings.SOURCE_OPEN_METEO->"Open-Meteo";WeatherSettings.SOURCE_OPEN_METEO_QWEATHER->"Open-Meteo + 和风";else->"彩云天气"}
     private fun date(t: Long)=SimpleDateFormat("yyyy-MM-dd",Locale.CHINA).format(Date(t))
 }

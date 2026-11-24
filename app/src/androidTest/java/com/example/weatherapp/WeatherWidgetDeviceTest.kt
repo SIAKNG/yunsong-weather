@@ -37,10 +37,10 @@ class WeatherWidgetDeviceTest {
         val foreground=ActivityScenario.launch(WeatherWidgetActivity::class.java).onActivity{it.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)}
         foreground.onActivity {activity ->
             val root=activity.findViewById<View>(android.R.id.content)
-            for(kind in listOf("compact","square","wide","weekly","large")) assertNotNull("General manager must offer $kind",root.findViewWithTag<View>("widget_add_$kind"))
+            for(kind in listOf("compact","square","wide","weekly","large",WeatherClockWidget.HOURLY,WeatherClockWidget.WEEKLY)) assertNotNull("General manager must offer $kind",root.findViewWithTag<View>("widget_add_$kind"))
         }
         val m=AppWidgetManager.getInstance(c)
-        assertEquals(10,WeatherWidgetCatalog.all(c).size)
+        assertEquals(12,WeatherWidgetCatalog.all(c).size)
         assertTrue(WeatherWidgetCatalog.all(c).first{it.kind=="weekly"}.title.contains("五日"))
         val kinds=listOf(Triple("compact",WeatherCompactWidget::class.java,2 to 1),Triple("square",WeatherSquareWidget::class.java,2 to 2),Triple("wide",WeatherWideWidget::class.java,4 to 2),Triple("weekly",WeatherWeeklyWidget::class.java,4 to 2),Triple("large",WeatherLargeWidget::class.java,4 to 4))
         // Explicit Beijing example; never screenshot a personal home address.
@@ -77,10 +77,10 @@ class WeatherWidgetDeviceTest {
                     val parent=FrameLayout(c)
                     val view=rv.apply(c,parent)
                     assertTrue(view.findViewById<View>(R.id.widgetImage).hasOnClickListeners())
-                    assertEquals(3,(view as android.view.ViewGroup).childCount)
+                    assertEquals(4,(view as android.view.ViewGroup).childCount)
                     assertTrue(view.findViewById<View>(R.id.widgetEditArea).hasOnClickListeners())
                     val stamp=view.findViewById<android.widget.TextView>(R.id.widgetEditArea)
-                    val expectedSize=android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP,if(kind=="compact") 9f else 10f,c.resources.displayMetrics)
+                    val expectedSize=android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_DIP,if(kind=="compact") 9f else 10f,c.resources.displayMetrics)
                     assertEquals("Native timestamp must use the reviewed per-template size",expectedSize,stamp.textSize,.1f)
                     assertFalse("Timestamp must not contain separator dots",stamp.text.toString().contains(" · "))
                     val reviewedHeader=WeatherWidgetRenderer.header(c,kind,w,h,beijing,data)

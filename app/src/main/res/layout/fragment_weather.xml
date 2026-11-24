@@ -8,7 +8,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-    <ScrollView
+    <com.example.weatherapp.ElasticWeatherScrollView
         android:id="@+id/weatherRoot"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -882,7 +882,7 @@
         </LinearLayout>
 
     </LinearLayout>
-    </ScrollView>
+    </com.example.weatherapp.ElasticWeatherScrollView>
     </com.example.weatherapp.CloudSwipeRefreshLayout>
 
     <!-- 顶部覆盖层放在最上层，保证城市名可点击进入城市管理；

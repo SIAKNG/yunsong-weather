@@ -79,7 +79,7 @@ internal object WeatherWidgetRenderer {
         val paint=android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply {typeface=Typeface.create("sans-serif",Typeface.BOLD);textSize=size}
         val raw=(city?.let{WeatherAddressFormatter.city(it.name)} ?: "云松天气").take(18)
         val smallPaint=Paint(Paint.ANTI_ALIAS_FLAG).apply {typeface=Typeface.create("sans-serif",Typeface.NORMAL)
-            textSize=android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP,timestampSize(kind),context.resources.displayMetrics)/context.resources.displayMetrics.density}
+            textSize=timestampSize(kind)}
         val right=if(compact) compactWeather(context,w,h,data?.sky).left-4f else if(square) w-pad-44f else if(large) w-pad else {
             paint.textSize=(if(large) 18f else if(h<154) 14f else 15f)*1.2f
             w-pad-paint.measureText(WeatherText.skyconToText(data?.sky)).coerceAtMost(w*.35f)-7f-(if(large) 44f else if(h<154) 32f else 34f)*1.2f-5f
@@ -104,11 +104,13 @@ internal object WeatherWidgetRenderer {
     }
     fun renderPlaceholder(context: Context,widthDp: Int,heightDp: Int): Bitmap =
         renderInternal(context,"",widthDp,heightDp,null,null,false,true)
-    fun render(context: Context,kind: String,widthDp: Int,heightDp: Int,city: CityPage?,data: WidgetWeather?,cities: List<Pair<CityPage,WidgetWeather?>> = emptyList()): Bitmap =
-        if(WeatherInfoWidgetRenderer.supports(kind)) WeatherInfoWidgetRenderer.render(context,kind,widthDp,heightDp,city,data,cities) else renderInternal(context,kind,widthDp,heightDp,city,data,true)
-    fun renderWidget(context: Context,kind: String,widthDp: Int,heightDp: Int,city: CityPage?,data: WidgetWeather?,cities: List<Pair<CityPage,WidgetWeather?>> = emptyList(),audit: MutableList<WeatherInfoWidgetRenderer.Element>?=null): Bitmap =
-        if(WeatherInfoWidgetRenderer.supports(kind)) WeatherInfoWidgetRenderer.render(context,kind,widthDp,heightDp,city,data,cities,audit) else renderInternal(context,kind,widthDp,heightDp,city,data,kind=="large",audit=audit)
-    private fun renderInternal(context: Context,kind: String,widthDp: Int,heightDp: Int,city: CityPage?,data: WidgetWeather?,showFooter: Boolean,placeholder: Boolean=false,audit: MutableList<WeatherInfoWidgetRenderer.Element>?=null): Bitmap {
+    fun render(context: Context,kind: String,widthDp: Int,heightDp: Int,city: CityPage?,data: WidgetWeather?,cities: List<Pair<CityPage,WidgetWeather?>> = emptyList(),now: Long=System.currentTimeMillis()): Bitmap =
+        if(WeatherInfoWidgetRenderer.supports(kind)) WeatherInfoWidgetRenderer.render(context,kind,widthDp,heightDp,city,data,cities) else renderInternal(context,kind,widthDp,heightDp,city,data,true,now=now)
+    fun renderWidget(context: Context,kind: String,widthDp: Int,heightDp: Int,city: CityPage?,data: WidgetWeather?,cities: List<Pair<CityPage,WidgetWeather?>> = emptyList(),audit: MutableList<WeatherInfoWidgetRenderer.Element>?=null,
+                     clockOverlay: Boolean=false,now: Long=System.currentTimeMillis()): Bitmap =
+        if(WeatherInfoWidgetRenderer.supports(kind)) WeatherInfoWidgetRenderer.render(context,kind,widthDp,heightDp,city,data,cities,audit) else renderInternal(context,kind,widthDp,heightDp,city,data,kind=="large",audit=audit,clockOverlay=clockOverlay,now=now)
+    private fun renderInternal(context: Context,kind: String,widthDp: Int,heightDp: Int,city: CityPage?,data: WidgetWeather?,showFooter: Boolean,placeholder: Boolean=false,audit: MutableList<WeatherInfoWidgetRenderer.Element>?=null,
+                               clockOverlay: Boolean=false,now: Long=System.currentTimeMillis()): Bitmap {
         val w=widthDp.coerceIn(120,600).toFloat();val h=heightDp.coerceIn(64,700).toFloat()
         val pad=contentInset(widthDp,heightDp,kind)
         val scale=min(context.resources.displayMetrics.density,min(900f/w,1050f/h))
@@ -152,10 +154,106 @@ internal object WeatherWidgetRenderer {
             bmp?.let{p.alpha=255;c.drawBitmap(it,null,RectF(tx,ty,tx+size,ty+size),p)}
         }
         fun temp(v: Double?)=WeatherSettings.tempText(context,v)
+        if (WeatherClockWidget.supports(kind)) {
+            val layout = WeatherClockWidget.layout(widthDp, heightDp)
+            val factor = layout.scale
+            val right = w - pad
+            val area = w - pad * 2
+            val leftWidth = area * .51f
+            val rightWidth = area - leftWidth - 3f * factor
+            val date = WeatherClockWidget.date(now)
+            val updated = updateText(context, data)
+            val cityName = WeatherAddressFormatter.city(city?.name ?: "云松天气")
+            fun ink(value: String): Rect = Rect().also { p.getTextBounds(value, 0, value.length, it) }
+            fun topText(value: String, x: Float, top: Float, size: Float, maxWidth: Float,
+                        bold: Boolean = false, alpha: Int = 255, align: Paint.Align = Paint.Align.LEFT) {
+                font(size, bold)
+                text(value, x, top - ink(value).top, size, bold, alpha, maxWidth, align)
+            }
+            topText(cityName, pad, pad, 14f * factor, leftWidth, true)
+            topText(updated, right, pad + 1f * factor, 11.5f * factor, rightWidth, alpha = 205, align = Paint.Align.RIGHT)
+
+            p.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            p.textSize = layout.size
+            val baseline = layout.top - p.fontMetricsInt.ascent
+            val number = WeatherClockWidget.clock(now)
+            val numberInk = ink(number)
+            if (!clockOverlay) {
+                p.color = Color.WHITE
+                c.drawText(number, layout.inset, baseline, p)
+                audit?.add(WeatherInfoWidgetRenderer.Element("text", number,
+                    RectF(pad + numberInk.left, baseline + numberInk.top, pad + numberInk.right, baseline + numberInk.bottom)))
+            }
+            val captionTop = baseline + numberInk.bottom + 4f * factor
+            topText(date, pad, captionTop, 13f * factor, leftWidth)
+
+            val current = temp(data?.temperature)
+            val artwork = WeatherInfoWidgetRenderer.displaySky(data)
+            val nominal = 40f * factor
+            font(nominal, true)
+            val availableTemperature = (rightWidth - 51f * factor).coerceAtLeast(rightWidth * .48f)
+            val currentSize = nominal * min(1f, (availableTemperature / p.measureText(current).coerceAtLeast(1f)))
+            font(currentSize, true)
+            val currentInk = ink(current)
+            val heroMid = layout.top + 24f * factor
+            val temperatureBaseline = heroMid - (currentInk.top + currentInk.bottom) / 2f
+            text(current, right, temperatureBaseline, currentSize, true, maxWidth = availableTemperature + 2f,
+                align = Paint.Align.RIGHT)
+            if (artwork != null) {
+                val sample = 48f
+                val inkBounds = iconInk(context, artwork, sample)
+                val inkHeight = (inkBounds.height() / sample).coerceAtLeast(.35f)
+                val side = minOf(currentInk.height() / inkHeight, 51f * factor)
+                val iconEnd = right - currentInk.width() - 5f * factor
+                icon(artwork, iconEnd - inkBounds.right * side / sample,
+                    heroMid - inkBounds.centerY() * side / sample, side)
+            }
+            val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(Date(now))
+            val today = data?.days?.firstOrNull { it.date.take(10) == dateKey }
+            val condition = data?.sky?.let(WeatherText::skyconToText) ?: "暂无天气"
+            val liveDetail = if (today?.low != null && today.high != null) {
+                "$condition · ${temp(today.low)} / ${temp(today.high)}"
+            } else condition
+            topText(liveDetail, right, captionTop, 12.4f * factor, rightWidth, alpha = 225, align = Paint.Align.RIGHT)
+
+            val count = if (kind == WeatherClockWidget.WEEKLY) 5 else 6
+            val dates = WeatherWidgetPolicy.futureDates(count, now)
+            val days = data?.days.orEmpty().associateBy { it.date.take(10) }
+            val forecastHours = data?.forecast.orEmpty().map {
+                WidgetHour(it.time, it.temperature, it.skycon, it.precipitationProbability)
+            }
+            val hours = (data?.hours.orEmpty() + forecastHours).filter { it.time >= now }
+                .distinctBy { it.time / ForecastDetailData.HOUR }.sortedBy { it.time }
+            val step = area / count
+            val pointIcon = 25f * factor
+            val pointFont = 12.5f * factor
+            val bottom = h - pad
+            for (i in 0 until count) {
+                val center = pad + step * (i + .5f)
+                val daily = days[dates[i]]
+                val hour = hours.getOrNull(i)
+                val weekly = kind == WeatherClockWidget.WEEKLY
+                val label = if (weekly) when (i) { 0 -> "明天"; 1 -> "后天"; else -> weekday(dates[i]) }
+                    else hour?.let { forecastHourLabel(it.time) } ?: "—"
+                val value = if (weekly) "${temp(daily?.low)}/${temp(daily?.high)}" else temp(hour?.temperature)
+                val sky = if (weekly) daily?.sky else hour?.sky
+                font(pointFont, true)
+                val valueInk = ink(value)
+                val iconBottom = bottom - valueInk.height() - 3f * factor
+                val iconTop = iconBottom - pointIcon
+                font(pointFont)
+                text(label, center, iconTop - 3f * factor - ink(label).bottom, pointFont, alpha = 230,
+                    maxWidth = step - 3f, align = Paint.Align.CENTER)
+                icon(sky, center - pointIcon / 2f, iconTop, pointIcon)
+                text(value, center, bottom - valueInk.bottom, pointFont, true,
+                    maxWidth = step - 3f, align = Paint.Align.CENTER)
+            }
+            return bitmap
+        }
         val header=header(context,kind,widthDp,heightDp,city,data)
         fun footer(value: String) {if(showFooter) {
             if(kind=="large") {
-                val size=android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP,timestampSize(kind),context.resources.displayMetrics)/context.resources.displayMetrics.density
+                val size=timestampSize(kind)
                 font(header.size,true);val cityInk=Rect();p.getTextBounds(header.name,0,header.name.length,cityInk)
                 val bottom=header.baseline+cityInk.bottom
                 font(size);val stampInk=Rect();p.getTextBounds(value,0,value.length,stampInk)
@@ -210,7 +308,7 @@ internal object WeatherWidgetRenderer {
             val bodyRight=weather.centerX-weatherLabelWidth*.5f-4f
             val available=(bodyRight-pad-gap).coerceAtLeast(1f)
             val fit=min(1f,available/(preferredMainWidth+preferredCaptionWidth).coerceAtLeast(1f))
-            val stampHeight=timestampSize(kind)*context.resources.displayMetrics.scaledDensity/context.resources.displayMetrics.density*1.2f
+            val stampHeight=timestampSize(kind)*1.2f
             val heightFit=((h-pad)-(header.stampTop+stampHeight+2f))/(preferredSize*.8f)
             var mainSize=preferredSize*min(fit,heightFit.coerceIn(.35f,1f))
             repeat(16) {

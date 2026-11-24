@@ -23,12 +23,25 @@ object WindReminderPolicy {
         return Wind(speed, level, gust)
     }
 
-    fun event(city: CityPage, speed: Double?, gust: Double?, now: Long = System.currentTimeMillis()): WeatherChangeEvent? {
+    fun event(city: CityPage, speed: Double?, gust: Double?, now: Long = System.currentTimeMillis(), forecastGust: Boolean = false): WeatherChangeEvent? {
         val wind = evaluate(speed, gust) ?: return null
         val kind = if (wind.isGust) "阵风" else "大风"
+        val name = WeatherAddressFormatter.city(city.name)
+        val legacyTitle = "${name}大风提醒 · ${wind.level}$kind"
+        val legacyBody = "当前${if (wind.isGust) "阵风" else "风速"} ${wind.speed} km/h，请注意防风，避免高空作业。"
+        val title = when {
+            wind.isGust && forecastGust -> "$name｜这段时间可能起阵风"
+            wind.isGust -> "$name｜阵风可能来得突然"
+            else -> "$name｜这会儿风比较大"
+        }
+        val speedText = "${kotlin.math.round(wind.speed).toInt()} 公里/小时"
+        val detail = when {
+            wind.isGust && forecastGust -> "接下来阵风可能达到$speedText。出门前可以先看看风势。"
+            wind.isGust -> "刚才测到的阵风约$speedText。骑车经过开阔处时，可以放慢些。"
+            else -> "现在风速约$speedText。骑车可以慢一点，阳台上容易被吹走的东西也可以先收好。"
+        }
         return WeatherChangeEvent(city, "wind", now, wind.level.removeSuffix("级").toInt(),
-            "${WeatherAddressFormatter.city(city.name)}大风提醒 · ${wind.level}$kind",
-            "当前${if (wind.isGust) "阵风" else "风速"} ${wind.speed} km/h，请注意防风，避免高空作业。")
+            title, detail, deliveryFingerprint = "$legacyTitle\u0000$legacyBody")
     }
 
     fun fromCaiyun(city: CityPage, result: Result, now: Long = System.currentTimeMillis()): WeatherChangeEvent? {
@@ -37,8 +50,9 @@ object WindReminderPolicy {
             val time = item.datetime?.let(TimeUtil::parse) ?: return@mapNotNull null
             item.value?.takeIf { it.isFinite() }?.let { time to it }
         }.filter { it.first in hour..(hour + 3_600_000L) }.minByOrNull { it.first }?.second
-        return event(city, result.realtime?.wind?.speed,
-            result.realtime?.gust?.takeIf { it.isFinite() } ?: hourlyGust, now)
+        val observedGust = result.realtime?.gust?.takeIf { it.isFinite() }
+        return event(city, result.realtime?.wind?.speed, observedGust ?: hourlyGust, now,
+            forecastGust = observedGust == null && hourlyGust != null)
     }
 
     fun isDue(lastSuccess: Long, now: Long): Boolean =

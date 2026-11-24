@@ -35,7 +35,7 @@ class DailyForecastDetailDeviceTest {
     }}
     private fun daily()=listOf(
         DailyForecast(key(-1),"CLOUDY",21,10,null),DailyForecast(key(0),"CLEAR_DAY",26,16,0),
-        DailyForecast(key(1),"CLEAR_DAY",36,28,0),DailyForecast(key(2),"CLOUDY",15,5,60))+
+        DailyForecast(key(1),"PARTLY_CLOUDY_DAY",36,28,0),DailyForecast(key(2),"CLOUDY",15,5,60))+
         (3..14).map {DailyForecast(key(it),"CLOUDY",17,8,null)}
     @Suppress("UNCHECKED_CAST") private fun <T> field(target: Any,name: String): T=
         target.javaClass.getDeclaredField(name).apply {isAccessible=true}.get(target) as T
@@ -71,9 +71,15 @@ class DailyForecastDetailDeviceTest {
             WeatherSettings.setWindUnit(context,WeatherSettings.WIND_MS)
             ActivityScenario.launch<ForecastDetailActivity>(ForecastDetailActivity.createIntent(context,"北京市",hours(),key(1),daily())).use {scenario ->
                 settle()
+                scenario.onActivity { a ->
+                    val panel = page(a, key(1)).view.findViewWithTag<DailyForecastMetricPanel>("daily_metric_panel")
+                    val scroll = generateSequence(panel.parent) { (it as? View)?.parent }.filterIsInstance<ScrollView>().first()
+                    scroll.smoothScrollTo(0, panel.top)
+                }
+                settle()
+                chooseDailyMetric(scenario, "WIND", "forecast_page:${key(1)}")
                 scenario.onActivity {a ->
                     val panel=page(a,key(1)).view.findViewWithTag<DailyForecastMetricPanel>("daily_metric_panel")
-                    panel.findViewWithTag<View>("daily_metric:WIND").performClick()
                     assertEquals(8.0,field<DoubleArray>(panel.chart,"values").first(),0.0)
                     assertTrue(panel.findViewWithTag<android.widget.TextView>("daily_metric_reading").text.contains("m/s"))
                 }

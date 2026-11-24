@@ -75,7 +75,7 @@ class AlertActivity : WeatherActivity() {
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
             val card = (convertView as? LinearLayout) ?: LinearLayout(this@AlertActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dp(16f), dp(16f), dp(16f), dp(16f))
+                setPadding(dp(16f), dp(12f), dp(16f), dp(12f))
                 setBackgroundResource(R.drawable.search_bg)
                 DetailCardEdges.apply(this)
                 layoutParams = AbsListView.LayoutParams(

@@ -5,13 +5,40 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Rect
+import android.view.TouchDelegate
+import android.view.View
 import android.widget.TextView
+import kotlin.math.roundToInt
+
+internal const val DETAIL_CAPSULE_RADIUS_DP = 24f
+
+internal fun TextView.useCompactDetailCapsule(horizontalPaddingDp: Int = 9, verticalPaddingDp: Int = 3, heightDp: Int = 27) {
+    val density = resources.displayMetrics.density
+    val horizontal = (horizontalPaddingDp * density).roundToInt()
+    val vertical = (verticalPaddingDp * density).roundToInt()
+    includeFontPadding = false
+    minHeight = (heightDp * density).roundToInt()
+    setPaddingRelative(horizontal, vertical, horizontal, vertical)
+}
+
+/** Give the compact control a comfortable touch area inside its own row. */
+internal fun View.keepDetailCapsuleTouchable(button: View) {
+    val targetHeight = (44f * resources.displayMetrics.density).roundToInt()
+    minimumHeight = targetHeight
+    addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+        val target = Rect().also(button::getHitRect)
+        val increase = (targetHeight - target.height()).coerceAtLeast(0) / 2
+        target.top = (target.top - increase).coerceAtLeast(0)
+        target.bottom = (target.bottom + increase).coerceAtMost(height)
+        touchDelegate = TouchDelegate(target, button)
+    }
+}
 
 /** Reuses the homepage glass renderer; only the background is blurred, never the label. */
 internal class FrostedActionButton(context: Context) : TextView(context) {
     private val glass = BlurCardView(context).apply {
         setFrostedMaterial(true)
-        setCornerRadius(12f * resources.displayMetrics.density)
+        setCornerRadius(DETAIL_CAPSULE_RADIUS_DP * resources.displayMetrics.density)
         setEdgeShadowVisible(false)
     }
     private var sample: Bitmap? = null
@@ -21,9 +48,9 @@ internal class FrostedActionButton(context: Context) : TextView(context) {
 
     fun setGlassState(atCurrent: Boolean, dark: Boolean) {
         if (!dark) {
-            DetailGlassSurface.install(this, 12f * resources.displayMetrics.density).setStateTint(true, atCurrent)
+            DetailGlassSurface.install(this, DETAIL_CAPSULE_RADIUS_DP * resources.displayMetrics.density).setStateTint(true, atCurrent)
             // As in dark mode, the unavailable action loses its bright glass rim.
-            foreground = if (atCurrent) null else WeatherFrostedBorderDrawable(resources.displayMetrics.density, 12f, false)
+            foreground = if (atCurrent) null else WeatherFrostedBorderDrawable(resources.displayMetrics.density, DETAIL_CAPSULE_RADIUS_DP, false)
             invalidate()
             return
         }

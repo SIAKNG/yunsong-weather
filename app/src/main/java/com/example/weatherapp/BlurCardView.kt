@@ -27,6 +27,15 @@ import android.widget.LinearLayout
 // 外部每帧把 Activity 根视图画面截成小图喂进来，这里裁出卡片所在区域做高斯模糊，
 // 放大后画成圆角背景，再叠一层玻璃提亮渐变，效果类似 iOS 控制中心/通知中心。
 // 模糊的是"卡片背后的真实画面"，所以卡片滚动到哪、模糊就跟随到哪。
+private var samplingChrome = false
+
+/** The chrome sample already contains the weather layer. Keep card tint and text in the sample. */
+internal fun drawForChromeSample(draw: () -> Unit) {
+    val wasSampling = samplingChrome
+    samplingChrome = true
+    try { draw() } finally { samplingChrome = wasSampling }
+}
+
 open class BlurCardView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -109,6 +118,15 @@ open class BlurCardView @JvmOverloads constructor(
     var blursContentInsteadOfBackground = false
 
     // 底部下边缘向下淡化高度（0 = 不淡化）：顶部蒙版下缘做渐变过渡
+    private fun verticalFade(top: Float, start: Float, end: Float): LinearGradient {
+        val colors = IntArray(9) { i ->
+            val t = i / 8f
+            Color.argb(((1f - t * t * (3f - 2f * t)) * 255).toInt(), 255, 255, 255)
+        }
+        return LinearGradient(0f, top + start, 0f, top + end.coerceAtLeast(start + .01f),
+            colors, null, Shader.TileMode.CLAMP)
+    }
+
     private var bottomFadePx = 0f
     // 指定淡化范围时，起点以本 View 顶部为基准，终点以底部内缩为基准。
     // 这让地址栏能从“城市文字行底部”开始精确过渡，而不是只能从固定底部高度过渡。
@@ -122,8 +140,11 @@ open class BlurCardView @JvmOverloads constructor(
     }
 
     fun setVerticalFadeRange(startPx: Float, clearEndInsetPx: Float = 0f) {
-        fadeStartPx = startPx.coerceAtLeast(0f)
-        fadeEndInsetPx = clearEndInsetPx.coerceAtLeast(0f)
+        val start = startPx.coerceAtLeast(0f)
+        val endInset = clearEndInsetPx.coerceAtLeast(0f)
+        if (fadeStartPx == start && fadeEndInsetPx == endInset) return
+        fadeStartPx = start
+        fadeEndInsetPx = endInset
         invalidate()
     }
 
@@ -280,7 +301,9 @@ open class BlurCardView @JvmOverloads constructor(
         invalidate()
     }
 
-    private companion object {
+    companion object {
+
+
         // 共用静态细颗粒纹理，不逐帧生成随机噪点，避免滚动闪烁和位图分配。
         val FROST_TEXTURE: Shader by lazy {
             val random = java.util.Random(18018L)
@@ -398,7 +421,7 @@ open class BlurCardView @JvmOverloads constructor(
             val right = b.right.toFloat()
             val bottom = b.bottom.toFloat()
 
-            source?.let { src ->
+            if (!samplingChrome) source?.let { src ->
                 path.reset()
                 path.addRoundRect(
                     left, top, right, bottom, cornerRadius, cornerRadius, Path.Direction.CW
@@ -449,17 +472,7 @@ open class BlurCardView @JvmOverloads constructor(
                         ct.drawBitmap(src, reg, Rect(0, 0, tw, th), bitmapPaint)
                         val p = Paint().apply {
                             xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
-                            shader = LinearGradient(
-                                0f, 0f, 0f, th.toFloat(),
-                                intArrayOf(
-                                    Color.WHITE,
-                                    Color.WHITE,
-                                    Color.TRANSPARENT,
-                                    Color.TRANSPARENT
-                                ),
-                                floatArrayOf(0f, fadeStart / th, fadeEnd / th, 1f),
-                                Shader.TileMode.CLAMP
-                            )
+                            shader = verticalFade(0f, fadeStart, fadeEnd)
                         }
                         // 必须覆盖整块位图：上半段保留 100% 模糊，终点以下完全清晰。
                         ct.drawRect(0f, 0f, tw.toFloat(), th.toFloat(), p)
@@ -501,22 +514,7 @@ open class BlurCardView @JvmOverloads constructor(
                         fadeMaskPaint.xfermode = dstIn
                         if(gpuFadeShader==null || gpuFadeBounds!=b || gpuFadeStart!=viewFadeStart || gpuFadeEnd!=viewFadeEnd) {
                             gpuFadeBounds.set(b);gpuFadeStart=viewFadeStart;gpuFadeEnd=viewFadeEnd
-                            gpuFadeShader = LinearGradient(
-                            0f, top, 0f, bottom,
-                            intArrayOf(
-                                Color.WHITE,
-                                Color.WHITE,
-                                Color.TRANSPARENT,
-                                Color.TRANSPARENT
-                            ),
-                            floatArrayOf(
-                                0f,
-                                viewFadeStart / b.height().toFloat(),
-                                viewFadeEnd / b.height().toFloat(),
-                                1f
-                            ),
-                            Shader.TileMode.CLAMP
-                        )
+                            gpuFadeShader = verticalFade(top, viewFadeStart, viewFadeEnd)
                         }
                         fadeMaskPaint.shader=gpuFadeShader
                         canvas.drawRect(left, top, right, bottom, fadeMaskPaint)

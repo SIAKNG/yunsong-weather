@@ -38,4 +38,22 @@ class ForecastDayHistoryPolicyTest {
         val merged=ForecastDayHistoryPolicy.merge(emptyList(),listOf(row(start,Double.NaN)),now)
         assertNull(merged.single().temperature)
     }
+
+    @Test fun independentCaiyunHoursSurviveWithoutTemperature() {
+        val timestamp = java.time.Instant.ofEpochMilli(start).toString()
+        val payload = Result(hourly = Hourly(humidity = listOf(HourlyValue(timestamp, 0.56)),
+            wind = listOf(HourlyWind(timestamp, 14.0, 90.0))))
+        val parsed = ForecastDayHistoryCache.fromCaiyun(payload, now).single()
+        assertNull(parsed.temperature)
+        assertEquals(56.0, parsed.humidity!!, 0.01)
+        assertEquals(90.0, parsed.windDirectionDegrees!!, 0.0)
+    }
+
+    @Test fun qWeatherDistinguishesOnePercentZeroAndUnreportedRain() {
+        val hours = listOf(1.0, 0.0, null).mapIndexed { i, pop ->
+            QHour(start + i * ForecastDetailData.HOUR, null, skycon = null, text = "", pop = pop)
+        }
+        val series = ForecastDayHistoryCache.fromQWeather(QWeatherBundle(null, hours, emptyList(), null, updateTimeMillis = now))
+        assertEquals(listOf(1, 0, null), series.map { HourlyForecastDetailPolicy.percent(it.precipitationProbability) })
+    }
 }

@@ -5,6 +5,10 @@ import android.content.Intent
 import android.os.Bundle
 import android.net.Uri
 import android.graphics.Color
+import android.graphics.Paint
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.view.Gravity
@@ -74,18 +78,26 @@ internal class FreeWeatherNotice(
             if (bold) typeface = Typeface.DEFAULT_BOLD
             setLineSpacing(dp(4).toFloat(), 1.08f)
         }
-        panel.addView(label("OPEN-METEO · 免费天气", 12f, accent, true))
-        panel.addView(label(if (explanation) "为什么需要自己的 API？" else "当前使用免费天气源", 21f, primary, true),
+        val provider = "Open-Meteo"
+        val title = if (explanation) "为什么需要自己的 API？" else "当前使用 $provider 天气源"
+        val heading = label(title, 21f, primary, true)
+        if (!explanation) {
+            heading.text = SpannableString(title).apply {
+                setSpan(ForegroundColorSpan(accent), title.indexOf(provider), title.indexOf(provider) + provider.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+        }
+        panel.addView(heading,
             LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(8);bottomMargin=dp(12)})
         val body = LinearLayout(activity).apply {orientation=LinearLayout.VERTICAL}
-        fun paragraph(value: String, color: Int = primary) {
-            body.addView(label(value, 14f, color), LinearLayout.LayoutParams(-1, -2).apply {
+        fun paragraph(value: String, color: Int = primary, bold: Boolean = false) {
+            body.addView(label(value, 14f, color, bold), LinearLayout.LayoutParams(-1, -2).apply {
                 if (body.childCount > 0) topMargin = dp(10)
             })
         }
         fun link(idValue: Int, value: String, callback: () -> Unit) {
             body.addView(label(value, 14f, accent, true).apply {
                 id = idValue
+                paintFlags = paintFlags or Paint.UNDERLINE_TEXT_FLAG
                 minHeight = dp(48)
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(0, dp(8), 0, dp(8))
@@ -103,13 +115,16 @@ internal class FreeWeatherNotice(
             link(View.NO_ID, "查看彩云免费额度与计费") { open("https://caiyunai.com/api/pricing.html") }
             link(View.NO_ID, "查看和风天气和基础服务定价") { open("https://dev.qweather.com/docs/finance/pricing/") }
         } else {
-            paragraph("当前正在使用 Open-Meteo 免费天气。数据来自境外气象预报模型，部分本地预报可能有偏差，分钟级降雨、国内官方预警和部分生活指数暂不提供。")
-            paragraph("强烈建议配置自己的彩云或和风 API。两家官方均提供免费额度，个人申请可以免费使用额度内支持的数据，改善国内天气的准确性和可用性。")
+            paragraph("免费天气使用气象预报模型，部分本地天气可能有偏差。")
+            val unavailableColor = if (WeatherSettings.isDarkTheme(activity)) Color.rgb(255, 197, 201)
+                else Color.rgb(143, 25, 43)
+            paragraph("暂不支持分钟级降雨、官方气象预警、生活建议卡片。", unavailableColor, bold = true)
+            paragraph("建议配置个人彩云或和风 API，两家均提供免费额度。")
             link(R.id.freeWeatherNoticeWhy, "为什么云松天气不内置免费的彩云和和风 API？") {
                 dialog?.dismiss()
                 showGlassDialog(explanation = true)
             }
-            body.addView(label("如需关闭提醒，前往「天气设置 → 天气数据」，开启「不再显示免费天气源提醒」。", 12f, secondary))
+            body.addView(label("不再提醒？到「天气设置 → 天气数据」开启「不再显示免费天气源提醒」。", 12f, secondary))
         }
         val scroll = object : ScrollView(activity) {
             override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -128,7 +143,7 @@ internal class FreeWeatherNotice(
                 setOnClickListener {click()}
             }
             panel.addView(button,LinearLayout.LayoutParams(-1,-2).apply {topMargin=dp(if(emphasized)20 else 10)})
-            SettingsGlassStyle.decorate(button,16f,action=true,backdrop=backdrop)
+            SettingsGlassStyle.decorate(button,16f,action=true)
             button.setTextColor(if(emphasized) accent else primary)
         }
         if (explanation) {
@@ -143,14 +158,14 @@ internal class FreeWeatherNotice(
             }
             action(R.id.freeWeatherNoticeDismiss, "我知道了", false) { dialog?.dismiss() }
         }
-        SettingsGlassStyle.decorate(panel,28f,backdrop=backdrop)
+        SettingsGlassStyle.decoratePopup(panel, backdrop, radiusDp = 28f, material = PopupGlassMaterial.FREE_NOTICE)
         dialog=AlertDialog.Builder(activity).setView(panel).create().also {notice ->
             notice.setOnDismissListener {if(dialog===notice) dialog=null}
             notice.show()
             notice.window?.apply {
                 setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
                 addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-                attributes=attributes.apply {dimAmount=.62f}
+                attributes=attributes.apply {dimAmount = if (WeatherSettings.isDarkTheme(activity)) .16f else .07f}
                 setLayout((activity.resources.displayMetrics.widthPixels-dp(40)).coerceAtMost(dp(440)),WindowManager.LayoutParams.WRAP_CONTENT)
             }
         }

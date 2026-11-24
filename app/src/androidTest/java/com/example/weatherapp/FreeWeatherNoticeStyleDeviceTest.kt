@@ -53,15 +53,16 @@ class FreeWeatherNoticeStyleDeviceTest {
                     scenario.onActivity {
                         val panel=dialog(notice).findViewById<View>(R.id.freeWeatherNoticePanel)!!
                         assertTrue(panel.background is DetailGlassSurface)
-                        assertNotNull(DetailGlassSurface::class.java.getDeclaredField("sample").apply {isAccessible=true}.get(panel.background))
+                        assertTrue("A blurred frame was captured from the owner window", DetailGlassSurface::class.java
+                            .getDeclaredField("hasPopupSample").apply { isAccessible = true }.getBoolean(panel.background))
                         assertTrue(panel.foreground is WeatherFrostedBorderDrawable)
                         for(id in listOf(R.id.freeWeatherNoticeConfigure,R.id.freeWeatherNoticeDismiss)) {
                             val button=dialog(notice).findViewById<View>(id)!!
-                            assertTrue(button.background is DetailGlassSurface)
+                            if (!dark) assertTrue(button.background is DetailGlassSurface)
                             assertTrue(button.foreground is WeatherFrostedBorderDrawable)
                             assertTrue(button.height>=48*button.resources.displayMetrics.density)
                         }
-                        assertTrue(window.attributes.dimAmount>=.55f)
+                        assertEquals(if (dark) .16f else .07f, window.attributes.dimAmount, .01f)
                         assertTrue(window.attributes.flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND != 0)
                     }
                     // Capture only the dialog window, never the system UI or private home city.

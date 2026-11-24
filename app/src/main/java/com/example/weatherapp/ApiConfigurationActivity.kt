@@ -75,7 +75,7 @@ class ApiConfigurationActivity : WeatherActivity() {
             setTextColor(ContextCompat.getColor(this@ApiConfigurationActivity, R.color.text_primary)); parent.addView(this)
         }
         text("天气数据 · API 配置", 22f)
-        text("不填接口也能使用 Open-Meteo 免费天气。填写自己的彩云或和风接口后优先使用个人接口，不再请求 Open-Meteo。凭证仅加密保存在本机。")
+        text("Open-Meteo 提供常规天气。配置和风可补齐灾害预警、生活指数和空气质量。也可以单独选择彩云主源。凭证仅加密保存在本机。")
         fun action(value: String, callback: () -> Unit) = TextView(this).apply {
             text=value; textSize=15f; gravity=android.view.Gravity.CENTER
             setPadding(20,20,20,20); minHeight=(48*resources.displayMetrics.density).toInt()
@@ -96,8 +96,8 @@ class ApiConfigurationActivity : WeatherActivity() {
         layout.addView(noticeRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
         SettingsGlassStyle.decorate(noticeRow, 16f)
         text("天气源优先级")
-        val source = Spinner(this).apply {
-            adapter = ArrayAdapter(this@ApiConfigurationActivity, android.R.layout.simple_spinner_dropdown_item, listOf("自动 · 个人 API 优先，无配置时免费天气", "彩云主源 · 已填和风可补充", "和风天气主源"))
+        val source = FrostedSelectionSpinner(this).apply {
+            adapter = ArrayAdapter(this@ApiConfigurationActivity, android.R.layout.simple_spinner_dropdown_item, listOf("自动 · Open-Meteo，可用和风优先补充", "彩云主源 · 已填和风可补充", "Open-Meteo + 和风补充"))
             setSelection(when(old.source) {WeatherSettings.SOURCE_QWEATHER->2;WeatherSettings.SOURCE_CAIYUN->1;else->0}); layout.addView(this)
         }
         val controls=mutableListOf<View>(source)
@@ -136,7 +136,7 @@ class ApiConfigurationActivity : WeatherActivity() {
         val caiyunPanel = formPanel()
         val caiyun = field(caiyunPanel, R.id.apiCaiyunToken,"彩云 API Token", old.caiyunToken, true)
         text("彩云接口版本（默认 2.6；有 2.7 权限时可选择 2.7）", parent = caiyunPanel)
-        val version = Spinner(this).apply {
+        val version = FrostedSelectionSpinner(this).apply {
             adapter = ArrayAdapter(this@ApiConfigurationActivity, android.R.layout.simple_spinner_dropdown_item, listOf("2.6", "2.7"))
             setSelection(if (old.caiyunVersion == "2.7") 1 else 0)
             caiyunPanel.addView(this)
@@ -154,7 +154,7 @@ class ApiConfigurationActivity : WeatherActivity() {
             caiyunPanel.visibility = if (index == 0) View.VISIBLE else View.GONE
             qweatherPanel.visibility = if (index == 1) View.VISIBLE else View.GONE
         }
-        showProvider(savedInstanceState?.getInt("api_provider_tab") ?: if (old.effectiveSource() == WeatherSettings.SOURCE_QWEATHER) 1 else 0)
+        showProvider(savedInstanceState?.getInt("api_provider_tab") ?: if (old.effectiveSource() == WeatherSettings.SOURCE_OPEN_METEO_QWEATHER) 1 else 0)
         tabs.selectTab(tabs.getTabAt(activeProviderTab))
         tabs.addOnTabSelectedListener(object : com.google.android.material.tabs.TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: com.google.android.material.tabs.TabLayout.Tab) {
@@ -210,7 +210,7 @@ class ApiConfigurationActivity : WeatherActivity() {
                 .setMessage("清除本机 API 配置？清除后将使用 Open-Meteo 免费天气，不影响已添加的城市。")
                 .setNegativeButton("取消", null).setPositiveButton("清除") { _, _ ->
                     UserApiConfiguration.clear(this@ApiConfigurationActivity); finish()
-                }.show()
+                }.create().showFrosted(this@ApiConfigurationActivity)
         }.also { controls.add(it) }
         action("返回") { finish() }
         layout.requestFocus()
@@ -224,7 +224,8 @@ class ApiConfigurationActivity : WeatherActivity() {
                     body.addView(progressText)
                     progressDialog=AlertDialog.Builder(this).setTitle(if(state.savedConfiguration) "已保存 · 正在检测" else "正在检测 · 不保存修改")
                         .setView(body).setCancelable(false).setNegativeButton("停止检测") {_,_->checker.cancel()}.create().also {
-                            it.show();it.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                            it.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                            it.showFrosted(this)
                         }
                 }
                 progressText?.text="已发起${state.requests}次请求\n${state.progress}\n${if(state.savedConfiguration) "停止检测不会删除已保存的配置。" else "检测不会修改正在使用的配置。"}"

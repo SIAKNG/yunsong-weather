@@ -51,4 +51,20 @@ class ProgressiveWeatherLoaderTest {
         pending.getValue("sw")(null);pending.getValue("sa")(null);assertNull(result)
         loader.load("sh","sw","sa",{_,_->},{_,_->});assertEquals(6,count)
     }
+
+    @Test fun weatherRefreshCanRetryWhileOldAirRequestIsStillInFlight() {
+        val pending = mutableListOf<Pair<String, (String?) -> Unit>>()
+        val loader = ProgressiveWeatherLoader({ url, callback -> pending.add(url to callback) })
+        val results = mutableListOf<String?>()
+        fun load() = loader.load("bj", "weather", "air", { weather, _ -> results.add(weather) }, { _, _ -> })
+        load()
+        assertEquals("weather", pending[0].first)
+        pending[0].second(null)
+        load()
+        assertEquals(listOf("weather", "air", "weather", "air"), pending.map { it.first })
+        pending[1].second("old-air")
+        pending[2].second("valid-weather")
+        assertEquals(listOf(null, "valid-weather"), results)
+    }
+
 }

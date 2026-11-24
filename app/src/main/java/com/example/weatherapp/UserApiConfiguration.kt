@@ -33,10 +33,9 @@ object UserApiConfiguration {
         fun hasPrimary(): Boolean = if (source == WeatherSettings.SOURCE_QWEATHER) hasQWeather() else caiyunToken.isNotBlank()
         /** Local selection only: remote failure never changes the selected provider. */
         fun effectiveSource(): String = when {
-            source == WeatherSettings.SOURCE_QWEATHER && hasQWeather() -> WeatherSettings.SOURCE_QWEATHER
             source == WeatherSettings.SOURCE_CAIYUN && caiyunToken.isNotBlank() -> WeatherSettings.SOURCE_CAIYUN
+            hasQWeather() -> WeatherSettings.SOURCE_OPEN_METEO_QWEATHER
             caiyunToken.isNotBlank() -> WeatherSettings.SOURCE_CAIYUN
-            hasQWeather() -> WeatherSettings.SOURCE_QWEATHER
             else -> WeatherSettings.SOURCE_OPEN_METEO
         }
         // Retain legacy fields when reading encrypted data, but never send them from this distribution.

@@ -50,6 +50,8 @@ class WeatherSquareWidget: WeatherWidgetProvider()
 class WeatherWideWidget: WeatherWidgetProvider()
 class WeatherLargeWidget: WeatherWidgetProvider()
 class WeatherWeeklyWidget: WeatherWidgetProvider()
+class WeatherClockHourlyWidget: WeatherWidgetProvider()
+class WeatherClockWeeklyWidget: WeatherWidgetProvider()
 class WeatherAirWidget: WeatherWidgetProvider()
 class WeatherRainWidget: WeatherWidgetProvider()
 class WeatherRainTrendWidget: WeatherWidgetProvider()
@@ -64,28 +66,36 @@ internal object WeatherWidgets {
     private val renderThread=Executors.newSingleThreadExecutor {r->Thread(r,"weather-widget-render")}
     fun render(context: Context) {
         val c=context.applicationContext
-        renderThread.execute {WeatherWidgetStore.ids(c).forEach {id ->runCatching{renderOne(c,id)}.onFailure{WeatherWidgetStore.record(c,"组件绘制失败，请检查并恢复")}}}
+        renderThread.execute {WeatherWidgetStore.ids(c).forEach {id ->runCatching{renderOne(c,id)}.onFailure{WeatherWidgetStore.record(c,"组件绘制失败，请检查并恢复");WeatherDiagnostics.event(c,"小组件","桌面绘制失败")}}}
     }
     internal fun views(c: Context,id: Int,kind: String,width: Int,height: Int): RemoteViews {
         val configured=WeatherWidgetStore.isConfigured(c,id)
         val city=WeatherWidgetStore.city(c,id)
         val data=city?.let{WeatherWidgetData.load(c,it)}
+        val showClock = configured && WeatherClockWidget.supports(kind)
         val open=activity(c,id,if(configured) MainActivity::class.java else WeatherWidgetActivity::class.java,if(configured) "open" else "edit")
         return RemoteViews(c.packageName,R.layout.weather_widget).apply {
             setViewVisibility(R.id.widgetLoading,if(configured) android.view.View.GONE else android.view.View.VISIBLE)
-            setImageViewBitmap(R.id.widgetImage,if(configured) WeatherWidgetRenderer.renderWidget(c,kind,width,height,city,data,if(kind=="cities") WeatherWidgetStore.cities(c,id).map{it to WeatherWidgetData.load(c,it)} else emptyList())
+            setImageViewBitmap(R.id.widgetImage,if(configured) WeatherWidgetRenderer.renderWidget(c,kind,width,height,city,data,if(kind=="cities") WeatherWidgetStore.cities(c,id).map{it to WeatherWidgetData.load(c,it)} else emptyList(), clockOverlay=showClock)
                 else WeatherWidgetRenderer.renderPlaceholder(c,width,height))
             setTextViewText(R.id.widgetLoading,"点击设置城市")
             setContentDescription(R.id.widgetImage,if(configured) WeatherWidgetRenderer.description(c,city,data) else "尚未设置城市，点击编辑")
             setViewVisibility(R.id.widgetEditArea,if(configured) android.view.View.VISIBLE else android.view.View.GONE)
             setTextViewText(R.id.widgetEditArea,WeatherWidgetRenderer.updateText(c,data))
-            setTextViewTextSize(R.id.widgetEditArea,android.util.TypedValue.COMPLEX_UNIT_SP,WeatherWidgetRenderer.timestampSize(kind))
+            setTextViewTextSize(R.id.widgetEditArea,android.util.TypedValue.COMPLEX_UNIT_DIP,WeatherWidgetRenderer.timestampSize(kind))
             val header=WeatherWidgetRenderer.header(c,kind,width,height,city,data)
             val density=c.resources.displayMetrics.density
             setViewPadding(R.id.widgetEditArea,(header.stampX*density).toInt(),(header.stampTop*density).toInt(),
                 ((width-header.stampX-header.stampWidth).coerceAtLeast(0f)*density).toInt(),0)
-            // The 4x4 timestamp scales with its image; launchers may resize bitmaps and text differently.
-            if(kind=="large") setViewVisibility(R.id.widgetEditArea,android.view.View.GONE)
+            // The clock cards and 4×4 place the timestamp in the bitmap coordinate space.
+            if(kind=="large" || showClock) setViewVisibility(R.id.widgetEditArea,android.view.View.GONE)
+            setViewVisibility(R.id.widgetClock, if (showClock) android.view.View.VISIBLE else android.view.View.GONE)
+            if (showClock) {
+                val clock = WeatherClockWidget.layout(width, height)
+                setTextViewTextSize(R.id.widgetClock, android.util.TypedValue.COMPLEX_UNIT_DIP, clock.size)
+                setViewPadding(R.id.widgetClock, (clock.inset * density).toInt(), (clock.top * density).toInt(), 0, 0)
+                setOnClickPendingIntent(R.id.widgetClock, open)
+            }
             if(WeatherInfoWidgetRenderer.supports(kind)) {
                 setViewVisibility(R.id.widgetEditArea,android.view.View.GONE)
                 setContentDescription(R.id.widgetImage,WeatherInfoWidgetRenderer.description(c,kind,data,
@@ -113,6 +123,7 @@ internal object WeatherWidgets {
     }
     fun schedule(c: Context) {
         WeatherWidgetRecoveryAlarm.schedule(c)
+        WeatherWidgetCalendarAlarm.schedule(c)
         val m=WorkManager.getInstance(c)
         if(WeatherWidgetStore.ids(c).isEmpty()) {
             listOf(PERIODIC,IMMEDIATE,"${IMMEDIATE}_manual").forEach{m.cancelUniqueWork(it)}
@@ -163,6 +174,7 @@ class WeatherWidgetWorker(c: Context,p: WorkerParameters): CoroutineWorker(c,p) 
             val result=WeatherBackgroundRefresh.refresh(c,city,publishRisk=false)
             if(result!=RefreshOutcome.SUCCESS) failed=true
         }
+        WeatherDiagnostics.event(c, "小组件", if(failed) "天气刷新失败，保留上次数据" else "天气刷新完成")
         WeatherWidgetStore.record(c,if(failed) "刷新未成功，保留上次数据，稍后重试" else "刷新完成")
         WeatherWidgets.render(c)
         WeatherCityStore.currentLocationCity(c)?.let { WeatherReminderPreparation.prepareFromCache(c,it) }

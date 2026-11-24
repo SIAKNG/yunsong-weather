@@ -156,9 +156,9 @@ class WeatherRefreshPolicyTest {
 
     @Test
     fun previewTitleUsesTheFormerTopMaskRevealThreshold() {
-        assertEquals(0f, TopChromeScrollPolicy.revealProgress(20, 160, 120, 64))
-        assertEquals(0.5f, TopChromeScrollPolicy.revealProgress(72, 160, 120, 64))
-        assertEquals(1f, TopChromeScrollPolicy.revealProgress(200, 160, 120, 64))
+        assertEquals(0f, TopChromeScrollPolicy.revealProgress(20, 40, 64))
+        assertEquals(0.5f, TopChromeScrollPolicy.revealProgress(72, 40, 64))
+        assertEquals(1f, TopChromeScrollPolicy.revealProgress(200, 40, 64))
     }
 
     @Test

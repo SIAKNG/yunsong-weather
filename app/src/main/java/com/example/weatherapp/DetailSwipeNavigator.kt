@@ -5,7 +5,6 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
-import android.widget.ScrollView
 import kotlin.math.abs
 
 /**
@@ -45,10 +44,16 @@ class DetailScrollView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
-) : ScrollView(context, attrs, defStyleAttr) {
+) : ElasticWeatherScrollView(context, attrs, defStyleAttr) {
     init {
         // 所有详情页均使用这个垂直容器；保留上下滑动，但不显示右侧系统滚动条。
         isVerticalScrollBarEnabled = false
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        (getChildAt(0) as? DetailViewportColumn)?.viewportHeight =
+            (MeasureSpec.getSize(heightMeasureSpec) - paddingTop - paddingBottom).coerceAtLeast(0)
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
 
     private var downX = 0f

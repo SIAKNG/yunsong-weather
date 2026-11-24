@@ -4,4 +4,5 @@
         <exclude domain="sharedpref" path="weather_widgets.xml" />
         <exclude domain="sharedpref" path="weather_prepared_reminders_v1.xml" />
         <exclude domain="sharedpref" path="weather_problem_diagnostics.xml" />
+        <exclude domain="sharedpref" path="weather_problem_crashes.xml" />
 </full-backup-content>

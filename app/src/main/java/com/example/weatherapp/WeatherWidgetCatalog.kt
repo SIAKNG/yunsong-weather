@@ -19,7 +19,7 @@ internal object WeatherWidgetCatalog {
         "WeatherLargeWidget"->"large";"WeatherWeeklyWidget"->"weekly";else->"wide"
     }
     fun all(c: Context): List<WeatherWidgetTemplate> {
-        val order=listOf("compact","square","wide","weekly","large","air","rain","rain_trend","cities","daily_summary")
+        val order=listOf("compact","square","wide","weekly",WeatherClockWidget.HOURLY,WeatherClockWidget.WEEKLY,"large","air","rain","rain_trend","cities","daily_summary")
         return AppWidgetManager.getInstance(c).installedProviders.filter{it.provider.packageName==c.packageName}
             .map{WeatherWidgetTemplate(kind(c,it),it.loadLabel(c.packageManager).removePrefix("云松天气 · "),it)}
             .sortedWith(compareBy<WeatherWidgetTemplate>{order.indexOf(it.kind).let{n->if(n<0) 100 else n}}.thenBy{it.title})

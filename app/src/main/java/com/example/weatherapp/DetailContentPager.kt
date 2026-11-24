@@ -37,13 +37,20 @@ internal class DetailContentPager private constructor(
 
     init {
         attach(pages.getValue(initial))
-        // Bind both neighbours before the first gesture; no API requests or Activity launches on MOVE.
-        root.post { if (!activity.isDestroyed) prewarm() }
+        // Build one neighbour at a time during idle periods after the entry first frame.
+        root.postOnAnimation { prewarm() }
     }
 
     private fun prewarm() {
-        page(DetailNavigator.step(currentPage, -1))
-        page(DetailNavigator.step(currentPage, 1))
+        val key = currentPage
+        for (direction in listOf(-1, 1)) {
+            android.os.Looper.myQueue().addIdleHandler {
+                if (root.isAttachedToWindow && !activity.isDestroyed && !activity.isFinishing && currentPage == key) {
+                    page(DetailNavigator.step(key, direction))
+                }
+                false
+            }
+        }
     }
 
     private fun page(key: DetailPage): Page = pages.getOrPut(key) {

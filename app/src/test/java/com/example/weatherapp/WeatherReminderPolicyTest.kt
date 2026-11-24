@@ -25,8 +25,8 @@ class WeatherReminderPolicyTest {
             DailyTemp("2026-09-07", high, low), DailyTemp("2026-09-05", 50.0, -10.0),
             DailyTemp("2026-09-06", 30.0, 20.0)))
         assertNull(WeatherReminderPolicy.temperatureChange(city, daily(34.4, 15.6), today))
-        assertTrue(WeatherReminderPolicy.temperatureChange(city, daily(35.0, 20.0), today)!!.detail.contains("最高温升高5℃"))
-        assertTrue(WeatherReminderPolicy.temperatureChange(city, daily(30.0, 15.0), today)!!.detail.contains("最低温降低5℃"))
+        assertTrue(WeatherReminderPolicy.temperatureChange(city, daily(35.0, 20.0), today)!!.detail.contains("最高温比今天高5℃"))
+        assertTrue(WeatherReminderPolicy.temperatureChange(city, daily(30.0, 15.0), today)!!.detail.contains("最低温比今天低5℃"))
         assertNull(WeatherReminderPolicy.temperatureChange(city, Daily(), today))
     }
 

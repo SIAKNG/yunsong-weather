@@ -1,6 +1,7 @@
 package com.example.weatherapp
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
@@ -22,6 +23,8 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /** 五项摘要中的图形语义；图示只辅助扫读，所有结论仍以 [HourlyForecastSummaryMetric] 的真实数值为准。 */
+internal data class DailySummaryWeather(val skycon: String?)
+
 internal enum class HourlyForecastSummaryKind { TEMPERATURE, RAIN, WIND, UV, AQI }
 
 internal data class HourlyForecastSummaryMetric(
@@ -52,7 +55,8 @@ internal class HourlyForecastSummaryView(
     @ColorInt private val secondary: Int,
     @ColorInt private val divider: Int,
     private val metrics: List<HourlyForecastSummaryMetric>,
-    private val compactTemperature: Boolean
+    private val compactTemperature: Boolean,
+    private val dailyWeather: DailySummaryWeather? = null
 ) : View(context) {
     internal val metricCount: Int get() = metrics.size
 
@@ -72,6 +76,11 @@ internal class HourlyForecastSummaryView(
     private val symbols = mutableListOf<Symbol>()
     private val dividers = mutableListOf<Float>()
     private val track = RectF()
+    private val dailyIconBounds = RectF()
+    private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private var dailyIcon: Bitmap? = null
+    private var dailyHalo: Bitmap? = null
+    private val dailyHaloBounds = RectF()
     private var metricGridDivider: Float? = null
 
     init {
@@ -83,29 +92,39 @@ internal class HourlyForecastSummaryView(
         contentDescription = metrics.joinToString("。") { metric ->
             buildString {
                 append("${metric.label} ${metric.value}，${metric.detail}，${metric.advice}")
-                metric.currentValue?.let { append("，当前温度 $it") }
+                if (metric.kind == HourlyForecastSummaryKind.TEMPERATURE && dailyWeather != null) {
+                    append("。当日天气：${dailyWeather.skycon?.let(WeatherText::skyconToText) ?: "天气待更新"}")
+                } else {
+                    metric.currentValue?.let { append("，当前温度 $it") }
+                }
             }
         }
     }
 
     private fun paragraph(text: String, x: Float, y: Float, width: Float, size: Float, color: Int,
                           bold: Boolean = false, alignment: Layout.Alignment = Layout.Alignment.ALIGN_NORMAL,
-                          fitValue: Boolean = false): Float {
+                          fitValue: Boolean = false, textSizePx: Float? = null,
+                          singleLine: Boolean = false): Float {
         if (text.isBlank()) return y
         val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             this.color = color
-            textSize = resources.weatherSp(size)
+            textSize = textSizePx ?: resources.weatherSp(size)
             typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
         }
         val availableWidth = width.toInt().coerceAtLeast(1)
-        if (fitValue) {
+        if (singleLine) {
+            val measured = Layout.getDesiredWidth(text, paint)
+            val lineWidth = (availableWidth - 1f).coerceAtLeast(.5f)
+            if (measured > lineWidth) paint.textSize *= lineWidth / measured
+        } else if (fitValue) {
             val measured = paint.measureText(text)
             if (measured > availableWidth) {
                 paint.textSize *= (availableWidth / measured).coerceAtLeast(.86f)
             }
         }
         val layout = StaticLayout.Builder.obtain(text, 0, text.length, paint, availableWidth)
-            .setAlignment(alignment).setLineSpacing(dp(1.5f), 1f).build()
+            .setAlignment(alignment).setLineSpacing(dp(1.5f), 1f)
+            .apply { if (singleLine) setMaxLines(1) }.build()
         paragraphs += Paragraph(layout, x, y)
         return y + layout.height
     }
@@ -118,6 +137,9 @@ internal class HourlyForecastSummaryView(
         symbols.clear()
         dividers.clear()
         track.setEmpty()
+        dailyIconBounds.setEmpty()
+        dailyIcon = null
+        dailyHalo = null
         metricGridDivider = null
         var y = pad
         val temperature = metrics.firstOrNull()
@@ -176,6 +198,7 @@ internal class HourlyForecastSummaryView(
 
         val rightStart = pad + split
         val rightWidth = contentWidth - split
+        if (dailyWeather != null) return layoutDailyWeather(rightStart, pad, rightWidth, textBottom)
         val current = metric.currentValue?.let { "当前 $it" }.orEmpty()
         val currentBottom = paragraph(current, rightStart, pad, rightWidth, 9.3f, primary, true,
             Layout.Alignment.ALIGN_CENTER)
@@ -193,9 +216,50 @@ internal class HourlyForecastSummaryView(
         return maxOf(textBottom, lowBottom, highBottom)
     }
 
+    private fun layoutDailyWeather(start: Float, top: Float, width: Float, textBottom: Float): Float {
+        val condition = dailyWeather?.skycon
+        val description = condition?.let(WeatherText::skyconToText) ?: "天气待更新"
+        val gap = dp(14f)
+        val edgeInset = dp(5f)
+        val side = minOf(dp(60f), ((width - gap - edgeInset) / 2.05f).coerceAtLeast(1f))
+        val icon = WeatherIconCache.load(context, condition, side)
+        val iconLeft = start + width - side - edgeInset
+        val textWidth = if (icon != null) iconLeft - start - gap else width
+        val paragraphStart = paragraphs.size
+        val textLimit = if (icon != null) side / 3f else dp(20f)
+        val textSize = minOf(textLimit, resources.homeWeatherSp(textLimit / dp(1f)))
+        val label = paragraph(description, start, 0f, textWidth, 20f, primary, true,
+            if (icon != null) Layout.Alignment.ALIGN_OPPOSITE else Layout.Alignment.ALIGN_CENTER,
+            textSizePx = textSize, singleLine = true)
+        val blockHeight = maxOf(if (icon != null) side else 0f, label)
+        val bottom = maxOf(textBottom, top + blockHeight)
+        val centerY = (top + bottom) / 2f
+        for (index in paragraphStart until paragraphs.size) {
+            val entry = paragraphs[index]
+            paragraphs[index] = entry.copy(y = centerY - label / 2f)
+        }
+        if (icon != null) {
+            dailyIcon = icon
+            dailyIconBounds.set(iconLeft, centerY - side / 2f, iconLeft + side, centerY + side / 2f)
+            val light = ColorUtils.calculateLuminance(contrastSurfaceColor) > .45
+            dailyHalo = DailyWeatherIconGlow.load(icon, light)
+            val haloPadding = side * DailyWeatherIconGlow.paddingRatio
+            dailyHaloBounds.set(dailyIconBounds)
+            dailyHaloBounds.inset(-haloPadding, -haloPadding)
+        }
+        return bottom
+    }
+
+    private fun drawDailyWeather(canvas: Canvas) {
+        val icon = dailyIcon ?: return
+        dailyHalo?.let { canvas.drawBitmap(it, null, dailyHaloBounds, bitmapPaint) }
+        canvas.drawBitmap(icon, null, dailyIconBounds, bitmapPaint)
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        metrics.firstOrNull()?.let { drawTemperatureTrack(canvas, it) }
+        if (dailyWeather != null) drawDailyWeather(canvas)
+        else metrics.firstOrNull()?.let { drawTemperatureTrack(canvas, it) }
         strokePaint.strokeWidth = dp(.7f)
         strokePaint.color = divider
         dividers.forEach { y -> canvas.drawLine(dp(14f), y, width - dp(14f), y, strokePaint) }

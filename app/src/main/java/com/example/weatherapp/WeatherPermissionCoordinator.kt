@@ -3,61 +3,66 @@ package com.example.weatherapp
 import android.Manifest
 import android.app.AlarmManager
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
+import android.location.LocationManager
 import android.os.Build
-import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
-/** 统一处理冷启动和设置页开关需要的权限与系统特殊访问。 */
+/** 统一处理首页定位和设置中的天气提醒权限。 */
 class WeatherPermissionCoordinator(private val activity: ComponentActivity) {
-    enum class ReminderType { DISASTER, TEMPERATURE, WIND, RAIN, DAILY }
-    private enum class Need { FOREGROUND_LOCATION, NOTIFICATIONS, BACKGROUND_LOCATION, EXACT_ALARM }
+    enum class ReminderType(internal val channelId: String, internal val channelLabel: String) {
+        DISASTER(WeatherNotificationCenter.CHANNEL_ALERT, "灾害预警"),
+        TEMPERATURE(WeatherNotificationCenter.CHANNEL_CHANGE, "天气变化提醒"),
+        WIND(WeatherNotificationCenter.CHANNEL_CHANGE, "天气变化提醒"),
+        RAIN(WeatherNotificationCenter.CHANNEL_RAIN, "降雨提醒"),
+        DAILY(WeatherNotificationCenter.CHANNEL_FORECAST, "每日天气预报")
+    }
 
+    private enum class Need { FOREGROUND_LOCATION, DEVICE_LOCATION, NOTIFICATIONS, REMINDER_CHANNEL }
+
+    private val settings = WeatherPermissionSettings(activity)
     private val prefs = activity.getSharedPreferences("weather_permission_state", Context.MODE_PRIVATE)
     private var needs: List<Need> = emptyList()
-    private var attempted = mutableSetOf<Need>()
+    private val attempted = mutableSetOf<Need>()
     private var completion: ((Boolean) -> Unit)? = null
+    private var reminder: ReminderType? = null
     private var waitingForSystemSettings = false
 
     private val foregroundLocation = activity.registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { finishNeed() }
+    ) { continueFlow() }
     private val notification = activity.registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { finishNeed() }
-    private val backgroundLocation = activity.registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { finishNeed() }
+    ) { continueFlow() }
 
     fun requestColdStart(onLocationReady: () -> Unit, onFinished: () -> Unit) {
         requestForegroundLocation {
             onLocationReady()
-            start(listOf(Need.NOTIFICATIONS)) { onFinished() }
+            requestNotifications { onFinished() }
         }
     }
 
-    fun requestForegroundLocation(onFinished: () -> Unit) {
-        start(listOf(Need.FOREGROUND_LOCATION)) { onFinished() }
+    fun requestForegroundLocation(onFinished: (Boolean) -> Unit) {
+        start(listOf(Need.FOREGROUND_LOCATION, Need.DEVICE_LOCATION), done = onFinished)
+    }
+
+    fun requestNotifications(onFinished: (Boolean) -> Unit) {
+        start(listOf(Need.NOTIFICATIONS), done = onFinished)
     }
 
     fun requestForReminder(type: ReminderType, onFinished: (Boolean) -> Unit) {
-        val required = requirementsFor(type)
-        start(required) { onFinished(required.all(::granted)) }
+        WeatherNotificationCenter.ensureChannels(activity)
+        start(listOf(Need.NOTIFICATIONS, Need.REMINDER_CHANNEL), type, onFinished)
     }
 
-    fun canEnableReminder(type: ReminderType): Boolean = requirementsFor(type).all(::granted)
-
-    private fun requirementsFor(type: ReminderType): List<Need> = when (type) {
-            // 精确闹钟未授权时仍登记普通闹钟，不应让每日预报开关失效。
-            ReminderType.DAILY -> listOf(Need.NOTIFICATIONS)
-            // 风险检查可使用最后一次保存的当前位置；后台定位只提升位置自动更新能力。
-            ReminderType.DISASTER, ReminderType.TEMPERATURE, ReminderType.WIND, ReminderType.RAIN -> listOf(Need.NOTIFICATIONS)
-        }
+    fun canEnableReminder(type: ReminderType): Boolean {
+        WeatherNotificationCenter.ensureChannels(activity)
+        return WeatherNotificationCenter.canNotifyChannel(activity, type.channelId)
+    }
 
     fun onResume() {
         if (!waitingForSystemSettings) return
@@ -65,58 +70,60 @@ class WeatherPermissionCoordinator(private val activity: ComponentActivity) {
         continueFlow()
     }
 
-    private fun start(required: List<Need>, done: (Boolean) -> Unit) {
+    private fun start(required: List<Need>, type: ReminderType? = null, done: (Boolean) -> Unit) {
         needs = required
-        attempted = mutableSetOf()
+        reminder = type
+        attempted.clear()
         completion = done
         continueFlow()
     }
 
     private fun continueFlow() {
-        val next = needs.firstOrNull { !granted(it) && it !in attempted }
+        val next = needs.firstOrNull { it !in attempted && !granted(it) && prerequisitesMet(it) }
         if (next == null) {
             val done = completion
+            val allowed = needs.all(::granted)
             completion = null
-            done?.invoke(needs.all(::granted))
+            reminder = null
+            done?.invoke(allowed)
             return
         }
         attempted += next
         showExplanation(next)
     }
 
+    private fun prerequisitesMet(need: Need): Boolean = when (need) {
+        Need.DEVICE_LOCATION -> hasForegroundLocation(activity)
+        Need.REMINDER_CHANNEL -> WeatherNotificationCenter.canNotify(activity)
+        else -> true
+    }
+
     private fun showExplanation(need: Need) {
         val (title, message) = when (need) {
-            Need.FOREGROUND_LOCATION -> "允许定位" to "定位用于显示当前位置天气。拒绝后仍可使用手动添加的城市，但无法自动定位到你所在城市。"
-            Need.NOTIFICATIONS -> "允许天气通知" to "通知用于灾害、降雨及每日天气预报提醒。拒绝后相关开关不能开启，App 不会在系统通知栏提示天气变化。"
-            Need.BACKGROUND_LOCATION -> "允许后台定位" to "后台定位会提升当前位置更新能力；不允许时，提醒仍会使用上次保存的当前位置。"
-            Need.EXACT_ALARM -> "允许闹钟和提醒" to "用于尽量在每天 07:00 与 22:00 发送天气预报。未允许时仍会登记普通系统闹钟，但可能被省电策略延后。"
+            Need.FOREGROUND_LOCATION -> "允许定位" to "允许云松天气使用位置信息后，可查看当前位置的天气。你也可以手动添加城市。"
+            Need.DEVICE_LOCATION -> "开启系统定位" to "云松天气已有定位权限，请打开手机的「位置信息」开关。"
+            Need.NOTIFICATIONS -> "允许天气通知" to "打开云松天气的通知开关，即可接收预警、降雨和每日天气预报等提醒。"
+            Need.REMINDER_CHANNEL -> "开启${reminder?.channelLabel}" to "云松天气的通知已开启，请再打开「${reminder?.channelLabel}」的通知开关。"
         }
-        // 运行时授权页由 Android 系统绘制，应用不能替换；这里的授权前说明使用
-        // Material You 弹窗，使圆角、按钮和配色跟随当前手机主题。
+        val openSettings = shouldOpenSettings(need)
         MaterialAlertDialogBuilder(activity)
             .setTitle(title)
             .setMessage(message)
             .setNegativeButton("暂不允许") { _, _ -> continueFlow() }
-            .setPositiveButton(if (shouldOpenSettings(need)) "前往设置" else "继续") { _, _ -> requestNeed(need) }
+            .setPositiveButton(if (openSettings) "前往设置" else "继续") { _, _ -> requestNeed(need, openSettings) }
             .setOnCancelListener { continueFlow() }
-            .show()
+            .create().showFrosted(activity)
     }
 
-    private fun requestNeed(need: Need) {
-        // 用户永久拒绝定位/通知时，重复调用运行时授权不会再显示系统弹窗；直接进入应用详情页。
-        if ((need == Need.FOREGROUND_LOCATION || need == Need.NOTIFICATIONS) && shouldOpenSettings(need)) {
-            waitingForSystemSettings = true
-            activity.startActivity(
-                if (need == Need.NOTIFICATIONS) {
-                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                        putExtra(Settings.EXTRA_APP_PACKAGE, activity.packageName)
-                    }
-                } else {
-                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                        data = Uri.fromParts("package", activity.packageName, null)
-                    }
-                }
-            )
+    private fun requestNeed(need: Need, openSettings: Boolean) {
+        if (openSettings) {
+            waitingForSystemSettings = when (need) {
+                Need.FOREGROUND_LOCATION -> settings.openAppLocation()
+                Need.DEVICE_LOCATION -> settings.openDeviceLocation()
+                Need.NOTIFICATIONS -> settings.openNotifications()
+                Need.REMINDER_CHANNEL -> reminder?.let { settings.openChannel(it.channelId, it.channelLabel) } == true
+            }
+            if (!waitingForSystemSettings) continueFlow()
             return
         }
         when (need) {
@@ -124,46 +131,19 @@ class WeatherPermissionCoordinator(private val activity: ComponentActivity) {
                 markAsked(Manifest.permission.ACCESS_FINE_LOCATION)
                 foregroundLocation.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
             }
-            Need.NOTIFICATIONS -> if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                finishNeed()
-            } else {
+            Need.NOTIFICATIONS -> {
                 markAsked(Manifest.permission.POST_NOTIFICATIONS)
                 notification.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
-            Need.BACKGROUND_LOCATION -> when {
-                Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || !hasForegroundLocation(activity) -> finishNeed()
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
-                    waitingForSystemSettings = true
-                    activity.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                        data = Uri.fromParts("package", activity.packageName, null)
-                    })
-                }
-                else -> {
-                    markAsked(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-                    backgroundLocation.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-                }
-            }
-            Need.EXACT_ALARM -> if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || canScheduleExactAlarms(activity)) {
-                finishNeed()
-            } else {
-                waitingForSystemSettings = true
-                activity.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
-                    data = Uri.fromParts("package", activity.packageName, null)
-                })
-            }
+            else -> continueFlow()
         }
     }
 
-    private fun finishNeed() = continueFlow()
-
     private fun shouldOpenSettings(need: Need): Boolean = when (need) {
-        Need.BACKGROUND_LOCATION -> Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
-        Need.EXACT_ALARM -> Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
         Need.FOREGROUND_LOCATION -> permanentlyDenied(Manifest.permission.ACCESS_FINE_LOCATION)
-        Need.NOTIFICATIONS ->
-            !WeatherNotificationCenter.canNotify(activity) &&
-                (WeatherNotificationCenter.hasRuntimeNotificationPermission(activity) ||
-                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && permanentlyDenied(Manifest.permission.POST_NOTIFICATIONS)))
+        Need.NOTIFICATIONS -> WeatherNotificationCenter.hasRuntimeNotificationPermission(activity) ||
+            (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && permanentlyDenied(Manifest.permission.POST_NOTIFICATIONS))
+        Need.DEVICE_LOCATION, Need.REMINDER_CHANNEL -> true
     }
 
     private fun permanentlyDenied(permission: String): Boolean =
@@ -174,19 +154,21 @@ class WeatherPermissionCoordinator(private val activity: ComponentActivity) {
 
     private fun granted(need: Need): Boolean = when (need) {
         Need.FOREGROUND_LOCATION -> hasForegroundLocation(activity)
+        Need.DEVICE_LOCATION -> LocationManagerCompat.isLocationEnabled(activity.getSystemService(LocationManager::class.java))
         Need.NOTIFICATIONS -> WeatherNotificationCenter.canNotify(activity)
-        Need.BACKGROUND_LOCATION -> hasBackgroundLocation(activity)
-        Need.EXACT_ALARM -> canScheduleExactAlarms(activity)
+        Need.REMINDER_CHANNEL -> reminder?.let { WeatherNotificationCenter.canNotifyChannel(activity, it.channelId) } == true
     }
 
     companion object {
         fun hasForegroundLocation(context: Context): Boolean =
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
                 ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
         fun hasBackgroundLocation(context: Context): Boolean =
             Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || ContextCompat.checkSelfPermission(
                 context, Manifest.permission.ACCESS_BACKGROUND_LOCATION
             ) == PackageManager.PERMISSION_GRANTED
+
         fun canScheduleExactAlarms(context: Context): Boolean =
             Build.VERSION.SDK_INT < Build.VERSION_CODES.S || context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
     }

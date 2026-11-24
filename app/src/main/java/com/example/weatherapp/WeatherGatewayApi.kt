@@ -108,6 +108,7 @@ object WeatherGatewayApi {
             chain.proceed(request)
         }
         val client = OkHttpClient.Builder()
+            .addInterceptor(WeatherDiagnosticMonitor.network(WeatherDiagnosticMonitor.Source.GATEWAY))
             .addInterceptor(headers)
             .connectTimeout(7, TimeUnit.SECONDS)
             .readTimeout(7, TimeUnit.SECONDS)
@@ -158,7 +159,7 @@ object WeatherDataRepository {
                 callback(if(sourceKey==WeatherSettings.sourceKey(context)) result else GatewayResult(code=409,message="天气源已变更"))
             } },{ result -> handler.post {
                 if(sourceKey==WeatherSettings.sourceKey(context)) onSupplement?.invoke(result)
-            } })
+            } }, includeAir = !WeatherSettings.useQWeatherSupplement(context))
             return
         }
         val token = embeddedCaiyunToken(context)
@@ -204,7 +205,7 @@ object WeatherDataRepository {
         span: Int = 15,
         hourlySteps: Int = 360
     ): GatewayResult<CaiyunResponse> = try {
-        if (WeatherSettings.useOpenMeteo(context)) OpenMeteoSource.fetch(lat,lon)
+        if (WeatherSettings.useOpenMeteo(context)) OpenMeteoSource.fetch(lat,lon, includeAir = !WeatherSettings.useQWeatherSupplement(context))
         else {
             val token = embeddedCaiyunToken(context)
             if (token.isBlank()) GatewayResult(code = 503, message = "天气服务构建配置缺失")

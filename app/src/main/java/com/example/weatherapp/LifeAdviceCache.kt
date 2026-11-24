@@ -36,15 +36,15 @@ object LifeAdviceCache {
         val lastSuccess = prefs.getLong(SUCCESS_PREFIX + k, 0L)
         if (cached.isNotEmpty() && WeatherCachePolicy.dailyUsable(now - lastSuccess)) return cached
         if (now - prefs.getLong(ATTEMPT_PREFIX + k, 0L) < RETRY_MS) return cached
-        prefs.edit().putLong(ATTEMPT_PREFIX + k, now).apply()
+        WeatherDiskCache.write(appContext, prefs) { putLong(ATTEMPT_PREFIX + k, now) }
         val fresh = runCatching(fetch).getOrDefault(emptyList())
         if(epoch!=WeatherSettings.sourceKey(appContext)) return emptyList()
         val merged = (cached + fresh).associateBy { it.type }.values.sortedBy { it.type.toIntOrNull() ?: 99 }
         if (merged.isNotEmpty()) {
-            prefs.edit()
-                .putString(k, Gson().toJson(merged))
-                .putLong(SUCCESS_PREFIX + k, now)
-                .apply()
+            WeatherDiskCache.write(appContext, prefs) {
+                putString(k, Gson().toJson(merged))
+                putLong(SUCCESS_PREFIX + k, now)
+            }
         }
         return merged
     }

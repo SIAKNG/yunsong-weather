@@ -195,22 +195,6 @@ class ApiCapabilityProbe(private val transport: ApiProbeTransport? = null, priva
         val base="https://"+c.qweatherHost.removePrefix("https://").trimEnd('/')
         val headers=mapOf("X-QW-Api-Key" to c.qweatherApiKey)
         fun get(name: String, path: String)=request(ApiProbeRequest(p,name,base+path,headers),progress)
-        val n=get("实况","/v7/weather/now?location=116.40,39.90&lang=zh&unit=m")
-        val nr=n.root.obj("now")
-        fields(p,"首页实况",n,listOf("气温" to nr.number("temp"),"天气" to nr.str("icon").isNotBlank(),"气压" to nr.number("pressure")))
-        fields(p,"实时指标（紫外线另检）",n,listOf("体感" to nr.number("feelsLike"),"风速" to nr.number("windSpeed"),"湿度" to nr.number("humidity"),"能见度" to nr.number("vis"),"气压" to nr.number("pressure")))
-        val h=get("小时预报","/v7/weather/24h?location=116.40,39.90&lang=zh&unit=m")
-        val hours=h.root.objects("hourly")
-        series(p,"多日页逐小时范围",h,hours,"fxTime",168) { it.number("temp") }
-        listOf("气温" to "temp","体感" to "feelsLike","湿度" to "humidity","气压" to "pressure","能见度" to "vis","风速" to "windSpeed","紫外线" to "uvIndex","降水概率" to "pop").forEach { (name,key)->
-            series(p,"小时$name / 48小时页",h,hours,"fxTime") { it.number(key) }
-        }
-        val d=get("多日预报与天文","/weather/v1/daily/39.90/116.40?days=7&lang=zh&localTime=true")
-        val dayRows=d.root.objects("days").map { raw -> raw.deepCopy().apply { addProperty("probeDate",raw.str("forecastStartTime").ifBlank { raw.str("forecastEndTime") }) } }
-        days(p,"多日预报（当前请求7日）",d,dayRows,"probeDate",7) { it.number("temperatureMax.value") && it.number("temperatureMin.value") }
-        days(p,"逐日天气",d,dayRows,"probeDate",7) { it.str("daytime.condition.code").isNotBlank() }
-        days(p,"逐日降水概率",d,dayRows,"probeDate",7) { it.number("daytime.precipitation.probability") }
-        days(p,"日出日落",d,dayRows,"probeDate",7) { it.str("astro.sunrise").isNotBlank() && it.str("astro.sunset").isNotBlank() }
         val a=get("当前空气质量","/airquality/v1/current/39.90/116.40?lang=zh")
         fields(p,"实时空气质量",a,listOf("AQI" to a.root.objects("indexes").any { it.number("aqi") }))
         fields(p,"六项污染物",a,pollutants.map { it to hasPollutant(a.root,it) })
@@ -220,13 +204,6 @@ class ApiCapabilityProbe(private val transport: ApiProbeTransport? = null, priva
         }
         series(p,"小时 AQI（目标24小时）",ah,airHours,"probeTime",24) { it.number("aqi") || it.objects("indexes").any { index-> index.str("code") in listOf("cn-mee","cn-mee-1h","qaqi") && index.number("aqi") } }
         pollutants.forEach { key -> series(p,"小时污染物 · $key",ah,airHours,"probeTime",24) { hasPollutant(it,key) } }
-        val m=get("分钟降水","/v7/minutely/5m?location=116.40,39.90&lang=zh")
-        result(p,"分钟级降水卡",m) { root ->
-            val count=root.objects("minutely").filter { it.number("precip") && time(it.str("fxTime"))!=null }.map { it.str("fxTime") }.distinct().size
-            add(p,"分钟级降水卡",when {count==0->ApiSupport.MISSING;count<24->ApiSupport.PARTIAL;else->ApiSupport.SUPPORTED},"本次 $count 个5分钟点（约${count*5}分钟）；0降水值算有效")
-        }
-        val uv=get("当日紫外线","/v7/indices/1d?type=5&location=116.40,39.90&lang=zh")
-        fields(p,"当日紫外线指数",uv,listOf("级别" to uv.root.objects("daily").any { it.str("level").isNotBlank() }))
         val life=get("全部生活建议","/v7/indices/1d?type=0&location=116.40,39.90&lang=zh")
         result(p,"生活建议页",life) { root ->
             val count=root.objects("daily").filter { it.str("type").isNotBlank() && it.str("name").isNotBlank() }.map { it.str("type") }.distinct().size
@@ -239,7 +216,7 @@ class ApiCapabilityProbe(private val transport: ApiProbeTransport? = null, priva
             add(p,"预警卡与通知数据",if(zero||returned) ApiSupport.SUPPORTED else ApiSupport.MISSING,
                 if(zero || returned && root.array("alerts").isEmpty()) "接口可用，当前无生效预警（不是不支持）；不代表系统通知必达" else if(returned) "返回${root.array("alerts").size}条；通知还依赖本机权限/后台调度" else "本次未返回预警结构")
         }
-        add(p,"昨日/历史对比",ApiSupport.LOCAL,"App 尚未调用和风原生历史路径；目前依赖同源快照缓存或明确的补充源。本轮未探测未接入的时光机权限")
+        add(p,"昨日/历史对比",ApiSupport.LOCAL,"历史天气由 Open-Meteo 提供，和风的空气质量历史保留在本地缓存")
     }
     private fun amap(c: UserApiConfiguration.Config, progress: (Int,String)->Unit) {
         listOf("城市输入提示" to "assistant/inputtips?keywords=%E5%8C%97%E4%BA%AC", "行政区中心点" to "config/district?keywords=%E5%8C%97%E4%BA%AC&subdistrict=0").forEach { (name,path)->
